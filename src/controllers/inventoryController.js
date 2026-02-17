@@ -1,0 +1,81 @@
+const asyncHandler = require('express-async-handler');
+const Inventory = require('../models/Inventory');
+
+// @desc    Get all inventory items
+// @route   GET /api/inventory
+// @access  Public (or Private)
+const getInventory = asyncHandler(async (req, res) => {
+    const items = await Inventory.find({}).sort({ createdAt: -1 });
+    res.json(items);
+});
+
+// @desc    Add new inventory item
+// @route   POST /api/inventory
+// @access  Private/Admin
+const addInventory = asyncHandler(async (req, res) => {
+    const { name, category, description, quantity, price, restockThreshold } = req.body;
+
+    const item = await Inventory.create({
+        name,
+        category,
+        description,
+        quantity,
+        price,
+        restockThreshold
+    });
+
+    if (item) {
+        res.status(201).json(item);
+    } else {
+        res.status(400);
+        throw new Error('Invalid inventory data');
+    }
+});
+
+// @desc    Update inventory details (e.g., restock or edit price)
+// @route   PUT /api/inventory/:id
+// @access  Private/Admin
+const updateInventory = asyncHandler(async (req, res) => {
+    const item = await Inventory.findById(req.params.id);
+
+    if (item) {
+        item.name = req.body.name || item.name;
+        item.category = req.body.category || item.category;
+        item.description = req.body.description || item.description;
+        item.quantity = req.body.quantity !== undefined ? req.body.quantity : item.quantity;
+        item.price = req.body.price !== undefined ? req.body.price : item.price;
+        item.restockThreshold = req.body.restockThreshold !== undefined ? req.body.restockThreshold : item.restockThreshold;
+
+        if (req.body.quantity !== undefined) {
+            item.lastRestocked = Date.now();
+        }
+
+        const updatedItem = await item.save();
+        res.json(updatedItem);
+    } else {
+        res.status(404);
+        throw new Error('Item not found');
+    }
+});
+
+// @desc    Delete inventory item
+// @route   DELETE /api/inventory/:id
+// @access  Private/Admin
+const deleteInventory = asyncHandler(async (req, res) => {
+    const item = await Inventory.findById(req.params.id);
+
+    if (item) {
+        await item.deleteOne();
+        res.json({ message: 'Item removed' });
+    } else {
+        res.status(404);
+        throw new Error('Item not found');
+    }
+});
+
+module.exports = {
+    getInventory,
+    addInventory,
+    updateInventory,
+    deleteInventory
+};
