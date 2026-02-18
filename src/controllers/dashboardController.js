@@ -25,9 +25,10 @@ const getDashboardStats = asyncHandler(async (req, res) => {
         status: 'Active'
     });
 
-    const revenueResult = await Member.aggregate([
-        { $match: { gymId } },
-        { $group: { _id: null, totalRevenue: { $sum: '$price' } } }
+    const Payment = require('../models/Payment');
+    const revenueResult = await Payment.aggregate([
+        { $match: { gymId, type: 'Membership', status: 'Paid' } },
+        { $group: { _id: null, totalRevenue: { $sum: '$amount' } } }
     ]);
     const revenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
 

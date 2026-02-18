@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const Member = require('../models/Member');
 const User = require('../models/User');
+const Payment = require('../models/Payment');
 const { getGymIdForAdmin } = require('./gymController');
 
 // @desc    Get all members for the logged-in gym
@@ -74,8 +75,6 @@ const addMember = asyncHandler(async (req, res) => {
         status: 'Active'
     });
 
-    const Payment = require('../models/Payment');
-
     if (member) {
         try {
             const newUser = await User.create({
@@ -128,7 +127,7 @@ const getMemberById = asyncHandler(async (req, res) => {
     }
 });
 
-// @desc    Update member
+// @desc    Update member (general edit / freeze / unfreeze)
 // @route   PUT /api/members/:id
 // @access  Private/Admin
 const updateMember = asyncHandler(async (req, res) => {
@@ -140,29 +139,9 @@ const updateMember = asyncHandler(async (req, res) => {
         throw new Error('Member not found');
     }
 
-    const { action, durationMonths, ...updateData } = req.body;
-    const Payment = require('../models/Payment');
+    const { action, ...updateData } = req.body;
 
-    if (action === 'renew') {
-        const currentEndDate = new Date(member.endDate) > new Date() ? new Date(member.endDate) : new Date();
-        currentEndDate.setMonth(currentEndDate.getMonth() + (Number(durationMonths) || 1));
-        member.endDate = currentEndDate;
-        member.status = 'Active';
-
-        const renewalPrice = updateData.price || member.price;
-        if (renewalPrice > 0) {
-            await Payment.create({
-                gymId,
-                member: member._id,
-                amount: renewalPrice,
-                type: 'Membership',
-                description: `Renewal - ${member.membershipType}`,
-                method: 'Cash',
-                date: new Date(),
-                status: 'Paid'
-            });
-        }
-    } else if (action === 'freeze') {
+    if (action === 'freeze') {
         member.status = 'Frozen';
     } else if (action === 'unfreeze') {
         member.status = 'Active';
@@ -172,6 +151,80 @@ const updateMember = asyncHandler(async (req, res) => {
 
     const updatedMember = await member.save();
     res.json(updatedMember);
+});
+
+// @desc    Renew a member's membership
+//          - Extends endDate from current endDate (or today if already expired)
+//          - Sets status to Active
+//          - Creates a Payment record
+//          - Updates member.price if a new price is provided
+// @route   POST /api/members/:id/renew
+// @access  Private/Admin
+const renewMember = asyncHandler(async (req, res) => {
+    const gymId = await getGymIdForAdmin(req.user._id);
+    const member = await Member.findOne({ _id: req.params.id, gymId });
+
+    if (!member) {
+        res.status(404);
+        throw new Error('Member not found');
+    }
+
+    const {
+        durationMonths = 1,
+        price,
+        method = 'Cash',
+        membershipType,
+        planDuration,
+        note
+    } = req.body;
+
+    const months = Number(durationMonths);
+    if (!months || months < 1) {
+        res.status(400);
+        throw new Error('Invalid duration');
+    }
+
+    // Extend from current endDate if still in future, else from today
+    const baseDate = new Date(member.endDate) > new Date() ? new Date(member.endDate) : new Date();
+    baseDate.setMonth(baseDate.getMonth() + months);
+
+    // Update member fields
+    member.endDate = baseDate;
+    member.status = 'Active';
+    if (membershipType) member.membershipType = membershipType;
+    if (planDuration) member.planDuration = planDuration;
+
+    const renewalAmount = price !== undefined ? Number(price) : member.price;
+    if (renewalAmount !== undefined && renewalAmount >= 0) {
+        member.price = renewalAmount;
+    }
+
+    await member.save();
+
+    // Create payment record
+    const paymentDescription = note
+        ? `Renewal - ${member.membershipType} (${note})`
+        : `Renewal - ${member.membershipType} (${months} month${months > 1 ? 's' : ''})`;
+
+    let payment = null;
+    if (renewalAmount > 0) {
+        payment = await Payment.create({
+            gymId,
+            member: member._id,
+            amount: renewalAmount,
+            type: 'Membership',
+            description: paymentDescription,
+            method,
+            date: new Date(),
+            status: 'Paid'
+        });
+    }
+
+    res.json({
+        member,
+        payment,
+        message: `Membership renewed successfully until ${baseDate.toLocaleDateString('en-IN')}`
+    });
 });
 
 // @desc    Delete member
@@ -190,4 +243,4 @@ const deleteMember = asyncHandler(async (req, res) => {
     }
 });
 
-module.exports = { getMembers, addMember, getMemberById, updateMember, deleteMember };
+module.exports = { getMembers, addMember, getMemberById, updateMember, renewMember, deleteMember };
