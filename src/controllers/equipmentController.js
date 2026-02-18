@@ -1,21 +1,29 @@
 const asyncHandler = require('express-async-handler');
 const Equipment = require('../models/Equipment');
+const { getGymIdForAdmin } = require('./gymController');
 
-// @desc    Get all equipment
+// @desc    Get all equipment for the logged-in gym
 // @route   GET /api/equipment
-// @access  Public
+// @access  Private/Admin
 const getEquipment = asyncHandler(async (req, res) => {
-    const equipment = await Equipment.find({}).sort({ createdAt: -1 });
+    const gymId = await getGymIdForAdmin(req.user._id);
+    if (!gymId) return res.status(404).json({ message: 'Gym not found' });
+
+    const equipment = await Equipment.find({ gymId }).sort({ createdAt: -1 });
     res.json(equipment);
 });
 
-// @desc    Add new equipment
+// @desc    Add new equipment for the logged-in gym
 // @route   POST /api/equipment
 // @access  Private/Admin
 const addEquipment = asyncHandler(async (req, res) => {
+    const gymId = await getGymIdForAdmin(req.user._id);
+    if (!gymId) return res.status(404).json({ message: 'Gym not found' });
+
     const { name, type, purchaseDate, condition, maintenanceHistory } = req.body;
 
     const equipment = await Equipment.create({
+        gymId,
         name,
         type,
         purchaseDate,
@@ -31,11 +39,12 @@ const addEquipment = asyncHandler(async (req, res) => {
     }
 });
 
-// @desc    Update equipment (e.g., status, maintenance log)
+// @desc    Update equipment (only if it belongs to this gym)
 // @route   PUT /api/equipment/:id
 // @access  Private/Admin
 const updateEquipment = asyncHandler(async (req, res) => {
-    const equipment = await Equipment.findById(req.params.id);
+    const gymId = await getGymIdForAdmin(req.user._id);
+    const equipment = await Equipment.findOne({ _id: req.params.id, gymId });
 
     if (equipment) {
         equipment.name = req.body.name || equipment.name;
@@ -45,7 +54,6 @@ const updateEquipment = asyncHandler(async (req, res) => {
 
         if (req.body.maintenanceLog) {
             equipment.maintenanceHistory.push(req.body.maintenanceLog);
-            equipment.lastMaintenanceDate = req.body.maintenanceLog.maintenanceDate || Date.now();
         }
 
         const updatedEquipment = await equipment.save();
@@ -56,11 +64,12 @@ const updateEquipment = asyncHandler(async (req, res) => {
     }
 });
 
-// @desc    Delete equipment
+// @desc    Delete equipment (only if it belongs to this gym)
 // @route   DELETE /api/equipment/:id
 // @access  Private/Admin
 const deleteEquipment = asyncHandler(async (req, res) => {
-    const equipment = await Equipment.findById(req.params.id);
+    const gymId = await getGymIdForAdmin(req.user._id);
+    const equipment = await Equipment.findOne({ _id: req.params.id, gymId });
 
     if (equipment) {
         await equipment.deleteOne();
@@ -71,9 +80,4 @@ const deleteEquipment = asyncHandler(async (req, res) => {
     }
 });
 
-module.exports = {
-    getEquipment,
-    addEquipment,
-    updateEquipment,
-    deleteEquipment
-};
+module.exports = { getEquipment, addEquipment, updateEquipment, deleteEquipment };

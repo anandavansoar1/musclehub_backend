@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
 
 const notificationSchema = mongoose.Schema({
+    // References the Gym collection for clean separation
+    gymId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Gym',
+        required: true,
+    },
     title: {
         type: String,
         required: true,
@@ -19,6 +25,12 @@ const notificationSchema = mongoose.Schema({
         enum: ['All', 'Members', 'Trainers'],
         default: 'All'
     },
+    // Optional expiry — notifications older than this are hidden from users
+    expiresAt: {
+        type: Date,
+        required: false,
+        default: null,
+    },
     readBy: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
@@ -32,5 +44,4 @@ const notificationSchema = mongoose.Schema({
 });
 
 const Notification = mongoose.model('Notification', notificationSchema);
-
 module.exports = Notification;

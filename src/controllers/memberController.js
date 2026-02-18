@@ -1,17 +1,21 @@
 const asyncHandler = require('express-async-handler');
 const Member = require('../models/Member');
+const User = require('../models/User');
+const { getGymIdForAdmin } = require('./gymController');
 
-// @desc    Get all members
+// @desc    Get all members for the logged-in gym
 // @route   GET /api/members
 // @access  Private/Admin
 const getMembers = asyncHandler(async (req, res) => {
+    const gymId = await getGymIdForAdmin(req.user._id);
+    if (!gymId) return res.status(404).json({ message: 'Gym profile not found. Please set up your gym first.' });
+
     const { keyword, filter } = req.query;
+    let query = { gymId };
 
-    let query = {};
-
-    // Search by name or phone
     if (keyword) {
         query = {
+            gymId,
             $or: [
                 { fullName: { $regex: keyword, $options: 'i' } },
                 { phone: { $regex: keyword, $options: 'i' } }
@@ -19,7 +23,6 @@ const getMembers = asyncHandler(async (req, res) => {
         };
     }
 
-    // Filter by status if provided (Active, Expired, etc)
     if (filter && filter !== 'All') {
         if (filter === 'Expiring') {
             const today = new Date();
@@ -36,12 +39,13 @@ const getMembers = asyncHandler(async (req, res) => {
     res.json(members);
 });
 
-const User = require('../models/User');
-
-// @desc    Add a new member
+// @desc    Add a new member to the logged-in gym
 // @route   POST /api/members
 // @access  Private/Admin
 const addMember = asyncHandler(async (req, res) => {
+    const gymId = await getGymIdForAdmin(req.user._id);
+    if (!gymId) return res.status(404).json({ message: 'Gym profile not found. Please set up your gym first.' });
+
     const { fullName, phone, email, membershipType, durationMonths, trainer, gender, address, emergencyContact, price, planDuration } = req.body;
 
     if (!fullName || !phone || !membershipType) {
@@ -49,24 +53,16 @@ const addMember = asyncHandler(async (req, res) => {
         throw new Error('Please fill in all required fields');
     }
 
-    // Check if user account already exists (by email or phone)
-    let existingUserQuery = [];
-    if (email) existingUserQuery.push({ email });
-    existingUserQuery.push({ phone });
-
-    // Note: We are creating MEMBER first, then USER. Or usually USER first?
-    // Let's create Member first.
-
-    // Calculate End Date
     const endDate = new Date();
     const monthsToAdd = durationMonths ? Number(durationMonths) : (planDuration === 'Yearly' ? 12 : planDuration === 'Quarterly' ? 3 : 1);
     endDate.setMonth(endDate.getMonth() + monthsToAdd);
 
     const member = await Member.create({
+        gymId,
         fullName,
         phone,
         email,
-        membershipType, // ... rest of fields
+        membershipType,
         planDuration,
         price,
         gender,
@@ -78,31 +74,36 @@ const addMember = asyncHandler(async (req, res) => {
         status: 'Active'
     });
 
-    if (member) {
-        // AUTOMATICALLY CREATE USER LOGIN
-        // Default password: Same as phone number
-        const defaultPassword = phone;
+    const Payment = require('../models/Payment');
 
+    if (member) {
         try {
             const newUser = await User.create({
                 name: fullName,
-                email: email || undefined, // If empty string, send undefined to use sparse index or just don't send
+                email: email || undefined,
                 phone: phone,
-                password: defaultPassword,
+                password: phone,
                 role: 'user',
-                linkedMemberId: member._id
+                linkedMemberId: member._id,
+                gymId,
             });
-
-            // Update member with userId for bidirectional linking
             member.userId = newUser._id;
             await member.save();
-
-            console.log(`Auto-created user account for member: ${fullName} with userId: ${newUser._id}`);
         } catch (userError) {
             console.error(`Failed to auto-create user for ${fullName}: ${userError.message}`);
-            // Don't fail the member creation, but maybe warn?
-            // Since phone is unique in User, if they already exist, this might fail.
-            // That's acceptable - they might already have an account.
+        }
+
+        if (price > 0) {
+            await Payment.create({
+                gymId,
+                member: member._id,
+                amount: price,
+                type: 'Membership',
+                description: `Membership - ${membershipType}`,
+                method: 'Cash',
+                date: new Date(),
+                status: 'Paid'
+            });
         }
 
         res.status(201).json(member);
@@ -116,7 +117,8 @@ const addMember = asyncHandler(async (req, res) => {
 // @route   GET /api/members/:id
 // @access  Private/Admin
 const getMemberById = asyncHandler(async (req, res) => {
-    const member = await Member.findById(req.params.id);
+    const gymId = await getGymIdForAdmin(req.user._id);
+    const member = await Member.findOne({ _id: req.params.id, gymId });
 
     if (member) {
         res.json(member);
@@ -126,32 +128,45 @@ const getMemberById = asyncHandler(async (req, res) => {
     }
 });
 
-// @desc    Update member (Renew, Freeze, Edit)
+// @desc    Update member
 // @route   PUT /api/members/:id
 // @access  Private/Admin
 const updateMember = asyncHandler(async (req, res) => {
-    const member = await Member.findById(req.params.id);
+    const gymId = await getGymIdForAdmin(req.user._id);
+    const member = await Member.findOne({ _id: req.params.id, gymId });
 
     if (!member) {
         res.status(404);
         throw new Error('Member not found');
     }
 
-    // Handle specific actions or general update
     const { action, durationMonths, ...updateData } = req.body;
+    const Payment = require('../models/Payment');
 
     if (action === 'renew') {
-        // Extend end date
         const currentEndDate = new Date(member.endDate) > new Date() ? new Date(member.endDate) : new Date();
         currentEndDate.setMonth(currentEndDate.getMonth() + (Number(durationMonths) || 1));
         member.endDate = currentEndDate;
         member.status = 'Active';
+
+        const renewalPrice = updateData.price || member.price;
+        if (renewalPrice > 0) {
+            await Payment.create({
+                gymId,
+                member: member._id,
+                amount: renewalPrice,
+                type: 'Membership',
+                description: `Renewal - ${member.membershipType}`,
+                method: 'Cash',
+                date: new Date(),
+                status: 'Paid'
+            });
+        }
     } else if (action === 'freeze') {
         member.status = 'Frozen';
     } else if (action === 'unfreeze') {
         member.status = 'Active';
     } else {
-        // General update
         Object.assign(member, updateData);
     }
 
@@ -163,7 +178,8 @@ const updateMember = asyncHandler(async (req, res) => {
 // @route   DELETE /api/members/:id
 // @access  Private/Admin
 const deleteMember = asyncHandler(async (req, res) => {
-    const member = await Member.findById(req.params.id);
+    const gymId = await getGymIdForAdmin(req.user._id);
+    const member = await Member.findOne({ _id: req.params.id, gymId });
 
     if (member) {
         await member.deleteOne();
@@ -174,10 +190,4 @@ const deleteMember = asyncHandler(async (req, res) => {
     }
 });
 
-module.exports = {
-    getMembers,
-    addMember,
-    getMemberById,
-    updateMember,
-    deleteMember
-};
+module.exports = { getMembers, addMember, getMemberById, updateMember, deleteMember };

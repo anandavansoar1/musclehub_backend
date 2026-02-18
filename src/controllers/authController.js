@@ -1,35 +1,48 @@
 const User = require('../models/User');
 const Member = require('../models/Member');
+const Gym = require('../models/Gym');
 const generateToken = require('../utils/generateToken');
 
 // @desc    Auth user & get token
 // @route   POST /api/auth/login
 // @access  Public
 const loginUser = async (req, res) => {
-    const { email, password } = req.body; // email field here is used as generic 'username' from frontend
+    const { email, password } = req.body;
 
     try {
-        // Find by email OR phone
         const user = await User.findOne({
-            $or: [
-                { email: email },
-                { phone: email } // Frontend sends input in 'email' field
-            ]
+            $or: [{ email }, { phone: email }]
         });
 
         if (user && (await user.matchPassword(password))) {
-            // Fetch associated Member details
             let member = null;
             if (user.linkedMemberId) {
                 member = await Member.findById(user.linkedMemberId);
             } else if (user.phone) {
-                // Fallback: try to find member by phone
                 member = await Member.findOne({ phone: user.phone });
-
-                // Self-healing: Link them if found
                 if (member) {
                     user.linkedMemberId = member._id;
                     await user.save();
+                }
+            }
+
+            // Resolve gym name:
+            // Admin → look up their Gym document
+            // Member user → look up gym via their member record's gymId
+            let gymName = 'MuscleHub';
+            let gymId = null;
+
+            if (user.role === 'admin') {
+                const gym = await Gym.findOne({ owner: user._id });
+                if (gym) {
+                    gymName = gym.name;
+                    gymId = gym._id;
+                }
+            } else if (member && member.gymId) {
+                const gym = await Gym.findById(member.gymId);
+                if (gym) {
+                    gymName = gym.name;
+                    gymId = gym._id;
                 }
             }
 
@@ -41,7 +54,9 @@ const loginUser = async (req, res) => {
                 isAdmin: user.isAdmin,
                 premiumFeatureAccess: user.premiumFeatureAccess,
                 linkedMemberId: user.linkedMemberId,
-                member: member, // Return full member details
+                gymName,
+                gymId,
+                member,
                 token: generateToken(user._id),
             });
         } else {
@@ -52,22 +67,21 @@ const loginUser = async (req, res) => {
     }
 };
 
-// @desc    Register a new user
+// @desc    Register a new admin user + auto-create their Gym document
 // @route   POST /api/auth/register
 // @access  Public
 const registerUser = async (req, res) => {
-    const { name, email, password, role, isAdmin } = req.body;
+    const { name, email, password, role, isAdmin, gymName } = req.body;
 
-    console.log('Register request data:', { name, email, role, isAdmin });
+    console.log('Register request data:', { name, email, role, isAdmin, gymName });
 
     try {
         const userExists = await User.findOne({ email });
-
         if (userExists) {
-            console.log('User already exists:', email);
             return res.status(400).json({ message: 'User already exists' });
         }
 
+        // 1. Create the User account
         const user = await User.create({
             name,
             email,
@@ -76,8 +90,17 @@ const registerUser = async (req, res) => {
             isAdmin: isAdmin || false,
         });
 
+        // 2. If registering as admin, auto-create a Gym document
+        let gym = null;
+        if (user && (role === 'admin' || isAdmin)) {
+            gym = await Gym.create({
+                owner: user._id,
+                name: gymName || name, // Use provided gym name or fallback to admin's name
+            });
+            console.log(`Auto-created Gym document for admin: ${user.name} → Gym: ${gym.name} (${gym._id})`);
+        }
+
         if (user) {
-            console.log('User created successfully:', user._id);
             res.status(201).json({
                 _id: user._id,
                 name: user.name,
@@ -85,10 +108,11 @@ const registerUser = async (req, res) => {
                 role: user.role,
                 isAdmin: user.isAdmin,
                 premiumFeatureAccess: user.premiumFeatureAccess,
+                gymName: gym ? gym.name : null,
+                gymId: gym ? gym._id : null,
                 token: generateToken(user._id),
             });
         } else {
-            console.log('Invalid user data');
             res.status(400).json({ message: 'Invalid user data' });
         }
     } catch (error) {
@@ -105,10 +129,27 @@ const getUserProfile = async (req, res) => {
         const user = await User.findById(req.user._id);
 
         if (user) {
-            // Fetch associated Member details
             let member = null;
             if (user.linkedMemberId) {
                 member = await Member.findById(user.linkedMemberId);
+            }
+
+            let gymName = 'MuscleHub';
+            let gymId = null;
+            let gymProfile = null;
+
+            if (user.role === 'admin') {
+                gymProfile = await Gym.findOne({ owner: user._id });
+                if (gymProfile) {
+                    gymName = gymProfile.name;
+                    gymId = gymProfile._id;
+                }
+            } else if (member && member.gymId) {
+                gymProfile = await Gym.findById(member.gymId);
+                if (gymProfile) {
+                    gymName = gymProfile.name;
+                    gymId = gymProfile._id;
+                }
             }
 
             res.json({
@@ -119,7 +160,10 @@ const getUserProfile = async (req, res) => {
                 isAdmin: user.isAdmin,
                 premiumFeatureAccess: user.premiumFeatureAccess,
                 linkedMemberId: user.linkedMemberId,
-                member: member // Include full member details
+                gymName,
+                gymId,
+                gymOpenOnSunday: gymProfile ? gymProfile.openOnSunday : user.gymOpenOnSunday,
+                member,
             });
         } else {
             res.status(404).json({ message: 'User not found' });
@@ -129,6 +173,9 @@ const getUserProfile = async (req, res) => {
     }
 };
 
+// @desc    Update user profile
+// @route   PUT /api/auth/profile
+// @access  Private
 const updateUserProfile = async (req, res) => {
     try {
         const user = await User.findById(req.user._id);
@@ -138,6 +185,16 @@ const updateUserProfile = async (req, res) => {
             user.email = req.body.email || user.email;
             if (req.body.password) {
                 user.password = req.body.password;
+            }
+
+            // If admin is updating gym-related settings, update the Gym document
+            if (user.role === 'admin') {
+                const gym = await Gym.findOne({ owner: user._id });
+                if (gym) {
+                    if (req.body.gymName) gym.name = req.body.gymName;
+                    if (req.body.gymOpenOnSunday !== undefined) gym.openOnSunday = req.body.gymOpenOnSunday;
+                    await gym.save();
+                }
             }
 
             const updatedUser = await user.save();

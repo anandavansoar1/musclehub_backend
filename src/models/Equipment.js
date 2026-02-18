@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
 
 const equipmentSchema = mongoose.Schema({
+    // References the Gym collection for per-gym isolation
+    gymId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Gym',
+        required: true,
+    },
     name: {
         type: String,
         required: true,
@@ -33,7 +39,7 @@ const equipmentSchema = mongoose.Schema({
             required: false
         },
         performedBy: {
-            type: String, // e.g., Technician name
+            type: String,
             required: false
         }
     }],
@@ -46,5 +52,4 @@ const equipmentSchema = mongoose.Schema({
 });
 
 const Equipment = mongoose.model('Equipment', equipmentSchema);
-
 module.exports = Equipment;

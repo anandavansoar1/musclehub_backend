@@ -1,10 +1,16 @@
 const mongoose = require('mongoose');
 
 const attendanceSchema = mongoose.Schema({
+    // References the Gym collection for per-gym isolation
+    gymId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Gym',
+        required: false, // Optional for backward compat with QR check-ins
+    },
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true,
+        required: false,
     },
     member: {
         type: mongoose.Schema.Types.ObjectId,
@@ -29,7 +35,7 @@ const attendanceSchema = mongoose.Schema({
     },
     method: {
         type: String,
-        enum: ['qr', 'manual'],
+        enum: ['qr', 'manual', 'auto'],
         default: 'qr',
     }
 }, {
@@ -37,5 +43,4 @@ const attendanceSchema = mongoose.Schema({
 });
 
 const Attendance = mongoose.model('Attendance', attendanceSchema);
-
 module.exports = Attendance;

@@ -25,6 +25,12 @@ const userSchema = mongoose.Schema({
         ref: 'Member',
         required: false
     },
+    // For member users: which gym (admin) they belong to
+    gymId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: false
+    },
     role: {
         type: String,
         enum: ['user', 'admin'],
@@ -38,7 +44,15 @@ const userSchema = mongoose.Schema({
     premiumFeatureAccess: {
         type: Boolean,
         required: true,
-        default: false, // Can be toggled by admin
+        default: false,
+    },
+    gymOpenOnSunday: {
+        type: Boolean,
+        default: true
+    },
+    gymName: {
+        type: String,
+        required: false, // Admin can set their gym name
     },
 }, {
     timestamps: true,

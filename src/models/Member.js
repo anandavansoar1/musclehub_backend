@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
 
 const memberSchema = mongoose.Schema({
+    // References the Gym collection (not User) for clean separation
+    gymId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Gym',
+        required: true,
+    },
     fullName: {
         type: String,
         required: true,
@@ -8,7 +14,7 @@ const memberSchema = mongoose.Schema({
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: false, // Optional - not all members may have user accounts
+        required: false,
     },
     phone: {
         type: String,
@@ -19,12 +25,12 @@ const memberSchema = mongoose.Schema({
         required: false,
     },
     membershipType: {
-        type: String, // Removed enum to allow custom plan names
+        type: String,
         required: true,
         default: 'Silver'
     },
     planDuration: {
-        type: String, // Monthly, Yearly, etc.
+        type: String,
         required: false
     },
     price: {
@@ -74,5 +80,4 @@ const memberSchema = mongoose.Schema({
 });
 
 const Member = mongoose.model('Member', memberSchema);
-
 module.exports = Member;
