@@ -17,7 +17,7 @@ const getPayments = asyncHandler(async (req, res) => {
     res.json(payments);
 });
 
-// @desc    Get payments by member
+// @desc    Get payments by member (admin view)
 // @route   GET /api/payments/:memberId
 // @access  Private/Admin
 const getMemberPayments = asyncHandler(async (req, res) => {
@@ -32,6 +32,21 @@ const getMemberPayments = asyncHandler(async (req, res) => {
 
     const payments = await Payment.find({ member: req.params.memberId, gymId })
         .populate('member', 'fullName phone')
+        .sort({ date: -1 });
+
+    res.json(payments);
+});
+
+// @desc    Get logged-in user's own payment history
+// @route   GET /api/payments/my
+// @access  Private (Member)
+const getMyPayments = asyncHandler(async (req, res) => {
+    if (!req.user.linkedMemberId) {
+        return res.json([]);
+    }
+
+    const payments = await Payment.find({ member: req.user.linkedMemberId })
+        .populate('member', 'fullName phone membershipType')
         .sort({ date: -1 });
 
     res.json(payments);
@@ -91,4 +106,4 @@ const migratePayments = async () => {
     }
 };
 
-module.exports = { getPayments, getMemberPayments, createPayment, migratePayments };
+module.exports = { getPayments, getMemberPayments, getMyPayments, createPayment, migratePayments };
