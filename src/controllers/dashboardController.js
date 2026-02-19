@@ -104,12 +104,17 @@ const getExpiringMembers = asyncHandler(async (req, res) => {
     res.json({ members: membersWithDays, count: membersWithDays.length, threshold: days });
 });
 
-// @desc    Send expiry reminders
+// @desc    Send expiry reminders — in-app notification + SMS per member
 // @route   POST /api/admin/send-expiry-reminders
 // @access  Private/Admin
 const sendExpiryReminders = asyncHandler(async (req, res) => {
     const gymId = await getGymIdForAdmin(req.user._id);
     if (!gymId) return res.status(404).json({ message: 'Gym not found' });
+
+    const Notification = require('../models/Notification');
+    const User = require('../models/User');
+    const { sendSms } = require('../services/smsService');
+    const Gym = require('../models/Gym');
 
     const { days } = req.body;
     const threshold = parseInt(days) || 7;
@@ -125,28 +130,68 @@ const sendExpiryReminders = asyncHandler(async (req, res) => {
         status: 'Active'
     });
 
-    let sentCount = 0;
-    const failedNumbers = [];
+    // Fetch gym name for personalised messages
+    const gym = await Gym.findById(gymId);
+    const gymName = gym ? gym.name : 'Your Gym';
+
+    let notifCount = 0;
+    let smsCount = 0;
+    const smsResults = [];
 
     for (const member of expiringMembers) {
+        const endDate = new Date(member.endDate);
+        const diffTime = endDate.getTime() - today.getTime();
+        const daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 3600 * 24)));
+        const formattedDate = endDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
+        const notifTitle = `⏰ Membership Expiring ${daysRemaining === 0 ? 'Today' : `in ${daysRemaining} Day${daysRemaining > 1 ? 's' : ''}`}`;
+        const notifMessage = `Hi ${member.fullName}! Your ${member.membershipType} membership at ${gymName} expires on ${formattedDate}. Please renew to keep your access active. 💪`;
+        const smsBody = `Hi ${member.fullName}, your membership at ${gymName} expires in ${daysRemaining} day(s) on ${formattedDate}. Please renew soon. - ${gymName}`;
+
+        // ── 1. In-app notification targeted to this member's user account ──
         try {
-            const endDate = new Date(member.endDate);
-            const diffTime = endDate.getTime() - today.getTime();
-            const daysRemaining = Math.ceil(diffTime / (1000 * 3600 * 24));
-            const message = `Hi ${member.fullName}, your membership expires in ${daysRemaining} day(s) on ${endDate.toLocaleDateString('en-IN')}. Please renew to continue.`;
-            console.log(`SMS to ${member.phone}: ${message}`);
-            sentCount++;
-        } catch (error) {
-            failedNumbers.push(member.phone);
+            // Find the linked user account for this member
+            let targetUserId = member.userId || null;
+            if (!targetUserId) {
+                const linkedUser = await User.findOne({ linkedMemberId: member._id });
+                if (linkedUser) targetUserId = linkedUser._id;
+            }
+
+            await Notification.create({
+                gymId,
+                title: notifTitle,
+                message: notifMessage,
+                type: 'Alert',
+                targetAudience: 'Members',
+                targetUserId: targetUserId || null,
+                createdBy: req.user._id,
+                expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // expires in 7 days
+            });
+            notifCount++;
+        } catch (err) {
+            console.error(`Failed to create notification for ${member.fullName}:`, err.message);
+        }
+
+        // ── 2. SMS (future-proof — currently logs to console) ──
+        if (member.phone) {
+            try {
+                const result = await sendSms(member.phone, smsBody);
+                if (result.success) smsCount++;
+                smsResults.push({ name: member.fullName, phone: member.phone, ...result });
+            } catch (err) {
+                smsResults.push({ name: member.fullName, phone: member.phone, success: false, error: err.message });
+            }
         }
     }
 
     res.json({
         success: true,
-        sentCount,
+        sentCount: notifCount,          // in-app notifications created
+        smsCount,                        // SMS sent (0 in console mode)
         totalMembers: expiringMembers.length,
-        failedNumbers,
-        message: `Reminders sent to ${sentCount} out of ${expiringMembers.length} members`
+        smsProvider: process.env.SMS_PROVIDER || 'console',
+        smsResults,
+        message: `Reminders sent to ${notifCount} member(s) via in-app notification. SMS: ${smsCount}/${expiringMembers.length} (provider: ${process.env.SMS_PROVIDER || 'console'}).`
     });
 });
 

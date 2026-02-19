@@ -25,6 +25,13 @@ const notificationSchema = mongoose.Schema({
         enum: ['All', 'Members', 'Trainers'],
         default: 'All'
     },
+    // For targeted notifications sent to a specific user (e.g. expiry reminders)
+    targetUserId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: false,
+        default: null,
+    },
     // Optional expiry — notifications older than this are hidden from users
     expiresAt: {
         type: Date,

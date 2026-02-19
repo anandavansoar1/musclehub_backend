@@ -71,13 +71,23 @@ const getNotifications = asyncHandler(async (req, res) => {
     // 1. Must belong to this gym
     // 2. Must NOT be expired (expiresAt is null OR expiresAt > now)
     // 3. Must have been created AFTER the member joined (so new users don't see old announcements)
+    // 4. Must be either broadcast (targetUserId=null) OR targeted specifically to this user
     const query = {
         gymId,
         $or: [
             { expiresAt: null },
             { expiresAt: { $gt: now } }
         ],
-        createdAt: { $gte: memberJoinedAt }
+        createdAt: { $gte: memberJoinedAt },
+        $and: [
+            {
+                $or: [
+                    { targetUserId: null },
+                    { targetUserId: { $exists: false } },
+                    { targetUserId: req.user._id }
+                ]
+            }
+        ]
     };
 
     const notifications = await Notification.find(query).sort({ createdAt: -1 });
