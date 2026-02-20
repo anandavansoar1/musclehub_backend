@@ -54,6 +54,10 @@ const userSchema = mongoose.Schema({
         type: String,
         required: false, // Admin can set their gym name
     },
+    fcmToken: {
+        type: String,
+        required: false, // Token for Push Notifications
+    },
 }, {
     timestamps: true,
 });

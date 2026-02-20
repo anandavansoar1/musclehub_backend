@@ -15,6 +15,12 @@ const loginUser = async (req, res) => {
         });
 
         if (user && (await user.matchPassword(password))) {
+            // Update FCM Token if provided in login
+            if (req.body.fcmToken) {
+                user.fcmToken = req.body.fcmToken;
+                await user.save();
+            }
+
             let member = null;
             if (user.linkedMemberId) {
                 member = await Member.findById(user.linkedMemberId);
@@ -183,6 +189,9 @@ const updateUserProfile = async (req, res) => {
         if (user) {
             user.name = req.body.name || user.name;
             user.email = req.body.email || user.email;
+            if (req.body.fcmToken) {
+                user.fcmToken = req.body.fcmToken;
+            }
             if (req.body.password) {
                 user.password = req.body.password;
             }

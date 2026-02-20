@@ -152,12 +152,20 @@ const sendExpiryReminders = asyncHandler(async (req, res) => {
         try {
             // Find the linked user account for this member
             let targetUserId = member.userId || null;
+            let targetUserToken = null;
+
             if (!targetUserId) {
                 const linkedUser = await User.findOne({ linkedMemberId: member._id });
-                if (linkedUser) targetUserId = linkedUser._id;
+                if (linkedUser) {
+                    targetUserId = linkedUser._id;
+                    targetUserToken = linkedUser.fcmToken;
+                }
+            } else {
+                const user = await User.findById(targetUserId).select('fcmToken');
+                if (user) targetUserToken = user.fcmToken;
             }
 
-            await Notification.create({
+            const newNotif = await Notification.create({
                 gymId,
                 title: notifTitle,
                 message: notifMessage,
@@ -168,6 +176,15 @@ const sendExpiryReminders = asyncHandler(async (req, res) => {
                 expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // expires in 7 days
             });
             notifCount++;
+
+            // ── 1.5 Send Push Notification if user has token ──
+            if (targetUserToken) {
+                const { sendPushNotification } = require('../services/firebaseService');
+                await sendPushNotification(targetUserToken, notifTitle, notifMessage, {
+                    type: 'Alert',
+                    notificationId: newNotif._id.toString()
+                });
+            }
         } catch (err) {
             console.error(`Failed to create notification for ${member.fullName}:`, err.message);
         }

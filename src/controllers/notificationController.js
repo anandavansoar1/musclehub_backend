@@ -5,6 +5,13 @@ const { getGymIdForAdmin } = require('./gymController');
 // @desc    Create a new notification for this gym
 // @route   POST /api/notifications
 // @access  Private/Admin
+const User = require('../models/User');
+const Member = require('../models/Member');
+const { sendMulticastNotification } = require('../services/firebaseService');
+
+// @desc    Create a new notification for this gym
+// @route   POST /api/notifications
+// @access  Private/Admin
 const createNotification = asyncHandler(async (req, res) => {
     const gymId = await getGymIdForAdmin(req.user._id);
     if (!gymId) return res.status(404).json({ message: 'Gym not found' });
@@ -23,6 +30,54 @@ const createNotification = asyncHandler(async (req, res) => {
 
     if (notification) {
         res.status(201).json(notification);
+
+        // ─── SEND PUSH NOTIFICATION (Async) ───
+        // We do this after sending the response so we don't block the UI
+        try {
+            let tokens = [];
+
+            if (targetAudience === 'All' || targetAudience === 'Members') {
+                console.log('Fetching tokens for targetAudience:', targetAudience);
+
+                // 1. Find all members of this gym
+                const members = await Member.find({ gymId }).select('userId');
+                console.log(`Found ${members.length} members for gym ${gymId}`);
+
+                // Filter out null/undefined userIds
+                const userIds = members
+                    .map(m => m.userId)
+                    .filter(id => id);
+
+                console.log(`Extracted ${userIds.length} user IDs from members`);
+
+                // 2. Find users with valid FCM tokens
+                if (userIds.length > 0) {
+                    const users = await User.find({
+                        _id: { $in: userIds },
+                        fcmToken: { $exists: true, $ne: null, $ne: '' } // Ensure token is not empty
+                    }).select('fcmToken');
+
+                    console.log(`Found ${users.length} users with FCM tokens`);
+
+                    tokens = users.map(u => u.fcmToken);
+                    console.log('Tokens to send:', tokens);
+                }
+            }
+            // For 'Trainers' or specific logic, add here (not fully implemented in schema yet)
+
+            if (tokens.length > 0) {
+                console.log(`Sending multicast to ${tokens.length} tokens...`);
+                await sendMulticastNotification(tokens, title, message, {
+                    type: type || 'Info',
+                    notificationId: notification._id.toString()
+                });
+            } else {
+                console.log('No tokens found to send notification to.');
+            }
+        } catch (error) {
+            console.error('Error sending push notifications:', error);
+            // Don't crash the request if push fails
+        }
     } else {
         res.status(400);
         throw new Error('Invalid notification data');
