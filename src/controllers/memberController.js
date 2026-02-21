@@ -54,6 +54,21 @@ const addMember = asyncHandler(async (req, res) => {
         throw new Error('Please fill in all required fields');
     }
 
+    const orConditions = [{ phone }];
+    if (email) {
+        orConditions.push({ email });
+    }
+
+    const existingMember = await Member.findOne({
+        gymId,
+        $or: orConditions
+    });
+
+    if (existingMember) {
+        res.status(400);
+        throw new Error('A member with this phone number or email already exists in your gym.');
+    }
+
     const endDate = new Date();
     const monthsToAdd = durationMonths ? Number(durationMonths) : (planDuration === 'Yearly' ? 12 : planDuration === 'Quarterly' ? 3 : 1);
     endDate.setMonth(endDate.getMonth() + monthsToAdd);
