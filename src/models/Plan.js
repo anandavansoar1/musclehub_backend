@@ -14,8 +14,7 @@ const PlanSchema = new mongoose.Schema({
     },
     duration: {
         type: String,
-        required: true,
-        enum: ['Monthly', 'Quarterly', 'Yearly', 'PT']
+        required: true
     },
     price: {
         type: Number,

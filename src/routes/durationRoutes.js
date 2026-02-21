@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getDurations, createDuration, deleteDuration } = require('../controllers/durationController');
+const { getDurations, createDuration, deleteDuration, updateDuration } = require('../controllers/durationController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
 router.route('/')
@@ -8,6 +8,7 @@ router.route('/')
     .post(protect, admin, createDuration);
 
 router.route('/:id')
-    .delete(protect, admin, deleteDuration);
+    .delete(protect, admin, deleteDuration)
+    .put(protect, admin, updateDuration);
 
 module.exports = router;
