@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const { getDashboardStats, getExpiringMembers, sendExpiryReminders } = require('../controllers/dashboardController');
+const { getDashboardStats, getExpiringMembers, sendExpiryReminders, getReportsData } = require('../controllers/dashboardController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
 router.get('/dashboard', protect, admin, getDashboardStats);
 router.get('/expiring-members', protect, admin, getExpiringMembers);
 router.post('/send-expiry-reminders', protect, admin, sendExpiryReminders);
+router.get('/reports', protect, admin, getReportsData);
 
 // Toggle premium access for a specific user
 router.put('/toggle-premium/:userId', protect, admin, async (req, res) => {

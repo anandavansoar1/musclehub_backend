@@ -55,6 +55,16 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     const MAX_CAPACITY = gym ? gym.maxCapacity : 200;
     const occupancyPercentage = Math.min(100, Math.round((currentOccupancy / MAX_CAPACITY) * 100));
 
+    const WorkoutClass = require('../models/WorkoutClass');
+    const upcomingClasses = await WorkoutClass.find({ gymId, date: { $gte: today } })
+        .sort({ date: 1, timeString: 1 })
+        .limit(3);
+
+    const Notification = require('../models/Notification');
+    const recentAlerts = await Notification.find({ gymId, type: 'Alert' })
+        .sort({ createdAt: -1 })
+        .limit(3);
+
     res.json({
         name: req.user.name,
         gymName: gym ? gym.name : req.user.name,
@@ -63,7 +73,9 @@ const getDashboardStats = asyncHandler(async (req, res) => {
         revenue,
         attendance: attendancePercentage,
         liveOccupancy: currentOccupancy,
-        occupancyPercentage
+        occupancyPercentage,
+        upcomingClasses,
+        recentAlerts
     });
 });
 
@@ -212,4 +224,152 @@ const sendExpiryReminders = asyncHandler(async (req, res) => {
     });
 });
 
-module.exports = { getDashboardStats, getExpiringMembers, sendExpiryReminders };
+// @desc    Get reports data for the logged-in gym
+// @route   GET /api/admin/reports
+// @access  Private/Admin
+const getReportsData = asyncHandler(async (req, res) => {
+    const gymId = await getGymIdForAdmin(req.user._id);
+    if (!gymId) return res.status(404).json({ message: 'Gym not found' });
+
+    const period = req.query.period || 'Month'; // 'Week', 'Month', 'Year'
+    const now = new Date();
+    let startDate = new Date();
+
+    if (period === 'Week') {
+        startDate.setDate(now.getDate() - 7);
+    } else if (period === 'Year') {
+        startDate.setFullYear(now.getFullYear() - 1);
+    } else {
+        // Default to last 30 days
+        startDate.setDate(now.getDate() - 30);
+    }
+
+    const Payment = require('../models/Payment');
+
+    // 1. Total Revenue in period
+    const revenueResult = await Payment.aggregate([
+        { $match: { gymId, type: 'Membership', status: 'Paid', createdAt: { $gte: startDate } } },
+        { $group: { _id: null, totalRevenue: { $sum: '$amount' } } }
+    ]);
+    const totalRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
+
+    // 2. Active Conversions (New Members in period)
+    const newMembersCount = await Member.countDocuments({
+        gymId,
+        createdAt: { $gte: startDate }
+    });
+
+    // 3. Dropout Rate (Members who expired in period and didn't renew) - simple proxy
+    const droppedMembersCount = await Member.countDocuments({
+        gymId,
+        endDate: { $gte: startDate, $lt: now },
+        status: { $ne: 'Active' }
+    });
+
+    const activeMembersCount = await Member.countDocuments({ gymId, status: 'Active' });
+    const dropoutRate = activeMembersCount > 0
+        ? ((droppedMembersCount / (activeMembersCount + droppedMembersCount)) * 100).toFixed(1)
+        : 0;
+
+    // 4. Revenue Trend (last 6 months basically, grouped by month)
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(now.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    const trendResult = await Payment.aggregate([
+        { $match: { gymId, type: 'Membership', status: 'Paid', createdAt: { $gte: sixMonthsAgo } } },
+        {
+            $group: {
+                _id: { month: { $month: "$createdAt" }, year: { $year: "$createdAt" } },
+                total: { $sum: '$amount' }
+            }
+        },
+        { $sort: { "_id.year": 1, "_id.month": 1 } }
+    ]);
+
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let revenueTrend = [];
+
+    // Fill empty months if needed
+    for (let i = 0; i < 6; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
+        const match = trendResult.find(t => t._id.month === d.getMonth() + 1 && t._id.year === d.getFullYear());
+        revenueTrend.push({
+            label: monthNames[d.getMonth()],
+            value: match ? match.total : 0
+        });
+    }
+
+    // 5. Attendance (Last 7 days)
+    const last7Days = new Date();
+    last7Days.setDate(now.getDate() - 6);
+    last7Days.setHours(0, 0, 0, 0);
+
+    const gymMemberIds = await Member.find({ gymId }).distinct('_id');
+    const attendanceResult = await Attendance.aggregate([
+        { $match: { member: { $in: gymMemberIds }, date: { $gte: last7Days } } },
+        {
+            $group: {
+                _id: { $dayOfWeek: "$date" }, // 1 (Sun) - 7 (Sat)
+                count: { $sum: 1 }
+            }
+        }
+    ]);
+
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    let attendanceTrend = [];
+    // Last 7 days in order
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(last7Days.getTime());
+        d.setDate(d.getDate() + i);
+        const dayOfWeekIndex = d.getDay() + 1; // getDay is 0 (Sun), mongo is 1 (Sun)
+        const match = attendanceResult.find(a => a._id === dayOfWeekIndex);
+
+        // Calculate percentage assuming avg members active this week is `activeMembersCount`
+        let percent = 0;
+        if (activeMembersCount > 0) {
+            percent = match ? Math.min(100, Math.round((match.count / activeMembersCount) * 100)) : 0;
+        }
+
+        attendanceTrend.push({
+            label: dayNames[d.getDay()],
+            value: percent,
+            color: '#38BDF8'
+        });
+    }
+
+    // 6. Top Membership Plans (overall currently active)
+    const planResult = await Member.aggregate([
+        { $match: { gymId, status: 'Active' } },
+        {
+            $group: {
+                _id: "$membershipType",
+                count: { $sum: 1 }
+            }
+        },
+        { $sort: { count: -1 } },
+        { $limit: 3 }
+    ]);
+
+    const colors = ['#E11D48', '#FACC15', '#38BDF8'];
+    const totalActiveBase = Math.max(activeMembersCount, 1);
+
+    const topPlans = planResult.map((p, index) => ({
+        name: p._id || 'Standard',
+        count: p.count,
+        percent: `${Math.round((p.count / totalActiveBase) * 100)}%`,
+        color: colors[index % colors.length]
+    }));
+
+    res.json({
+        totalRevenue,
+        activeConversions: newMembersCount,
+        dropoutRate: dropoutRate,
+        revenueTrend,
+        attendanceTrend,
+        topPlans
+    });
+});
+
+module.exports = { getDashboardStats, getExpiringMembers, sendExpiryReminders, getReportsData };
