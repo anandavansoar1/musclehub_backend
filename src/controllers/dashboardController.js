@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const Member = require('../models/Member');
 const Attendance = require('../models/Attendance');
+const mongoose = require('mongoose');
 const { getGymIdForAdmin } = require('./gymController');
 
 // @desc    Get dashboard stats for the logged-in gym
@@ -65,6 +66,41 @@ const getDashboardStats = asyncHandler(async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(3);
 
+    // Get Top 3 performers (Leaderboard) for Admin Dashboard
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+    const topPerformers = await Attendance.aggregate([
+        {
+            $match: {
+                gymId: new mongoose.Types.ObjectId(gymId),
+                date: { $gte: thirtyDaysAgo }
+            }
+        },
+        {
+            $group: {
+                _id: "$member",
+                count: { $sum: 1 }
+            }
+        },
+        { $sort: { count: -1 } },
+        { $limit: 3 },
+        {
+            $lookup: {
+                from: "members",
+                localField: "_id",
+                foreignField: "_id",
+                as: "memberInfo"
+            }
+        },
+        { $unwind: "$memberInfo" },
+        {
+            $project: {
+                name: "$memberInfo.name",
+                count: 1
+            }
+        }
+    ]);
+
     res.json({
         name: req.user.name,
         gymName: gym ? gym.name : req.user.name,
@@ -75,7 +111,8 @@ const getDashboardStats = asyncHandler(async (req, res) => {
         liveOccupancy: currentOccupancy,
         occupancyPercentage,
         upcomingClasses,
-        recentAlerts
+        recentAlerts,
+        topPerformers
     });
 });
 

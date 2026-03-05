@@ -27,6 +27,7 @@ app.use('/api/plans', require('./src/routes/planRoutes'));
 app.use('/api/durations', require('./src/routes/durationRoutes'));
 app.use('/api/payments', require('./src/routes/paymentRoutes'));
 app.use('/api/classes', require('./src/routes/workoutClassRoutes'));
+app.use('/api/community', require('./src/routes/communityRoutes'));
 
 app.get('/', (req, res) => {
     res.send('API is running...');
