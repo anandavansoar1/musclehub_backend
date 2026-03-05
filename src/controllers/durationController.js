@@ -9,26 +9,35 @@ const getDurations = asyncHandler(async (req, res) => {
     const gymId = await getGymIdForAdmin(req.user._id);
     if (!gymId) return res.status(404).json({ message: 'Gym not found' });
 
-    let durations = await Duration.find({ gymId }).sort({ value: 1 });
+    const durations = await Duration.find({ gymId }).sort({ value: 1 });
+    res.json(durations);
+});
+
+// @desc    Generate default durations (1, 3, 6 months)
+// @route   POST /api/durations/generate
+// @access  Private/Admin
+const generateDurations = asyncHandler(async (req, res) => {
+    const gymId = await getGymIdForAdmin(req.user._id);
+    if (!gymId) return res.status(404).json({ message: 'Gym not found' });
 
     const defaultDurations = [
         { gymId, label: 'Monthly', value: 1 },
         { gymId, label: 'Quarterly', value: 3 },
         { gymId, label: 'Half Yearly', value: 6 },
-        { gymId, label: 'Yearly', value: 12 },
     ];
 
-    // Find which values are already present
-    const existingValues = durations.map(d => d.value);
+    // Get existing durations to avoid exact duplicates
+    const existingDurations = await Duration.find({ gymId });
+    const existingValues = existingDurations.map(d => d.value);
 
-    // Find missing default durations
-    const missingDurations = defaultDurations.filter(def => !existingValues.includes(def.value));
+    // Filter out defaults that already exist
+    const toInsert = defaultDurations.filter(d => !existingValues.includes(d.value));
 
-    if (missingDurations.length > 0) {
-        await Duration.insertMany(missingDurations);
-        durations = await Duration.find({ gymId }).sort({ value: 1 });
+    if (toInsert.length > 0) {
+        await Duration.insertMany(toInsert);
     }
 
+    const durations = await Duration.find({ gymId }).sort({ value: 1 });
     res.json(durations);
 });
 
@@ -92,4 +101,4 @@ const updateDuration = asyncHandler(async (req, res) => {
     }
 });
 
-module.exports = { getDurations, createDuration, deleteDuration, updateDuration };
+module.exports = { getDurations, generateDurations, createDuration, deleteDuration, updateDuration };
