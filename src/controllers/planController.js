@@ -70,4 +70,22 @@ const updatePlan = asyncHandler(async (req, res) => {
     }
 });
 
-module.exports = { getPlans, createPlan, deletePlan, updatePlan };
+// @desc    Generate default plans
+// @route   POST /api/plans/generate
+// @access  Private/Admin
+const generateDefaultPlans = asyncHandler(async (req, res) => {
+    const gymId = await getGymIdForAdmin(req.user._id);
+    if (!gymId) return res.status(404).json({ message: 'Gym not found' });
+
+    const defaultPlans = [
+        { gymId, name: 'Normal', price: 600, duration: '1 Month', description: 'Standard gym membership plan' },
+        { gymId, name: 'Normal + Treadmill', price: 700, duration: '1 Month', description: 'Gym access with treadmill usage' },
+        { gymId, name: 'Cardio', price: 800, duration: '1 Month', description: 'Full gym and cardio area access' }
+    ];
+
+    const createdPlans = await Plan.insertMany(defaultPlans);
+    res.status(201).json(createdPlans);
+});
+
+module.exports = { getPlans, createPlan, deletePlan, updatePlan, generateDefaultPlans };
+

@@ -3,15 +3,36 @@ const Member = require('../models/Member');
 const Gym = require('../models/Gym');
 const jwt = require('jsonwebtoken');
 
+// Helper to reliably find and link member for logged-in user
+const getMemberForUser = async (user) => {
+    if (user.linkedMemberId) {
+        const m = await Member.findById(user.linkedMemberId);
+        if (m) return m;
+    }
+    const orConditions = [{ userId: user._id }];
+    if (user.phone) orConditions.push({ phone: user.phone });
+
+    const m = await Member.findOne({ $or: orConditions });
+    if (m) {
+        user.linkedMemberId = m._id;
+        if (!m.userId) {
+            m.userId = user._id;
+            await m.save();
+        }
+        await user.save();
+    }
+    return m;
+};
+
 // @desc    Generate a short-lived QR token for check-in
 // @route   GET /api/attendance/token
 // @access  Admin
 const generateCheckInToken = async (req, res) => {
     try {
         const token = jwt.sign(
-            { type: 'checkin_session', timestamp: Date.now() },
+            { type: 'checkin_session', gymId: req.user.gymId || req.user._id, timestamp: Date.now() },
             process.env.JWT_SECRET,
-            { expiresIn: '60s' }
+            { expiresIn: '120s' } // 2 minutes window for easy scanning
         );
         res.json({ token });
     } catch (error) {
@@ -26,21 +47,25 @@ const checkIn = async (req, res) => {
     const { token } = req.body;
 
     try {
+        if (!token) {
+            return res.status(400).json({ message: 'QR token is required' });
+        }
+
         let decoded;
         try {
             decoded = jwt.verify(token, process.env.JWT_SECRET);
             if (decoded.type !== 'checkin_session') throw new Error('Invalid token type');
         } catch (err) {
-            return res.status(400).json({ message: 'Invalid or expired QR code' });
+            return res.status(400).json({ message: 'Invalid or expired QR code. Please scan again.' });
         }
 
-        if (!req.user.linkedMemberId) {
-            return res.status(400).json({ message: 'No active membership found' });
+        const member = await getMemberForUser(req.user);
+        if (!member) {
+            return res.status(400).json({ message: 'No active member profile found for your account' });
         }
-
-        const member = await Member.findById(req.user.linkedMemberId);
-        if (!member) return res.status(404).json({ message: 'Member profile not found' });
-        if (member.status !== 'Active') return res.status(400).json({ message: 'Membership is not active' });
+        if (member.status !== 'Active') {
+            return res.status(400).json({ message: `Membership is ${member.status}. Cannot check in.` });
+        }
 
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
@@ -55,7 +80,7 @@ const checkIn = async (req, res) => {
         }
 
         const attendance = await Attendance.create({
-            gymId: member.gymId, // Inherit gymId from the member's gym
+            gymId: member.gymId,
             user: req.user._id,
             member: member._id,
             date: new Date(),
@@ -97,7 +122,7 @@ const manualCheckIn = async (req, res) => {
         }
 
         const attendance = await Attendance.create({
-            gymId: member.gymId, // Inherit gymId from the member's gym
+            gymId: member.gymId,
             user: member.userId || undefined,
             member: member._id,
             date: new Date(),
@@ -116,15 +141,16 @@ const manualCheckIn = async (req, res) => {
 // @access  Private
 const checkOut = async (req, res) => {
     try {
-        if (!req.user.linkedMemberId) {
-            return res.status(400).json({ message: 'No active membership found' });
+        const member = await getMemberForUser(req.user);
+        if (!member) {
+            return res.status(400).json({ message: 'No active member profile found for your account' });
         }
 
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
 
         const attendance = await Attendance.findOne({
-            member: req.user.linkedMemberId,
+            member: member._id,
             checkInTime: { $gte: startOfDay },
             checkOutTime: null
         });
@@ -152,11 +178,12 @@ const checkOut = async (req, res) => {
 // @access  Private
 const getHistory = async (req, res) => {
     try {
-        if (!req.user.linkedMemberId) {
-            return res.status(400).json({ message: 'No active membership found' });
+        const member = await getMemberForUser(req.user);
+        if (!member) {
+            return res.status(400).json({ message: 'No active member profile found for your account' });
         }
 
-        const history = await Attendance.find({ member: req.user.linkedMemberId })
+        const history = await Attendance.find({ member: member._id })
             .sort({ checkInTime: -1 });
 
         const now = new Date();
@@ -165,8 +192,6 @@ const getHistory = async (req, res) => {
 
         const thisMonthAttendance = history.filter(a => new Date(a.checkInTime) >= startOfMonth);
 
-        // Fetch gym settings from the member's own gym (not the first admin)
-        const member = await Member.findById(req.user.linkedMemberId);
         let gymOpenOnSunday = true;
         if (member && member.gymId) {
             const gym = await Gym.findById(member.gymId);

@@ -66,7 +66,7 @@ const addMember = asyncHandler(async (req, res) => {
 
     if (existingMember) {
         res.status(400);
-        throw new Error('A member with this phone number or email already exists in your gym.');
+        throw new Error('A member with this phone number already exists in your gym.');
     }
 
     const endDate = new Date();
@@ -162,6 +162,15 @@ const updateMember = asyncHandler(async (req, res) => {
         member.status = 'Active';
     } else {
         Object.assign(member, updateData);
+        if (member.endDate) {
+            const end = new Date(member.endDate);
+            const now = new Date();
+            if (end >= now && member.status === 'Expired') {
+                member.status = 'Active';
+            } else if (end < now && member.status === 'Active') {
+                member.status = 'Expired';
+            }
+        }
     }
 
     const updatedMember = await member.save();
