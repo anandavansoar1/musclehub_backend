@@ -77,20 +77,24 @@ const loginUser = async (req, res) => {
 // @route   POST /api/auth/register
 // @access  Public
 const registerUser = async (req, res) => {
-    const { name, email, password, role, isAdmin, gymName } = req.body;
+    const { name, email, phone, password, role, isAdmin, gymName } = req.body;
 
-    console.log('Register request data:', { name, email, role, isAdmin, gymName });
+    console.log('Register request data:', { name, email, phone, role, isAdmin, gymName });
 
     try {
-        const userExists = await User.findOne({ email });
+        const userExists = await User.findOne({ 
+            $or: [{ email }, { phone }] 
+        });
+        
         if (userExists) {
-            return res.status(400).json({ message: 'User already exists' });
+            return res.status(400).json({ message: 'User already exists with this email or phone' });
         }
 
         // 1. Create the User account
         const user = await User.create({
             name,
             email,
+            phone,
             password,
             role: role || 'user',
             isAdmin: isAdmin || false,
@@ -162,6 +166,7 @@ const getUserProfile = async (req, res) => {
                 _id: user._id,
                 name: user.name,
                 email: user.email,
+                phone: user.phone,
                 role: user.role,
                 isAdmin: user.isAdmin,
                 premiumFeatureAccess: user.premiumFeatureAccess,
@@ -189,6 +194,9 @@ const updateUserProfile = async (req, res) => {
         if (user) {
             user.name = req.body.name || user.name;
             user.email = req.body.email || user.email;
+            if (req.body.phone !== undefined) {
+                user.phone = req.body.phone;
+            }
             if (req.body.fcmToken) {
                 user.fcmToken = req.body.fcmToken;
             }
@@ -212,6 +220,7 @@ const updateUserProfile = async (req, res) => {
                 _id: updatedUser._id,
                 name: updatedUser.name,
                 email: updatedUser.email,
+                phone: updatedUser.phone,
                 role: updatedUser.role,
                 token: generateToken(updatedUser._id),
             });
@@ -222,5 +231,41 @@ const updateUserProfile = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+// @desc    Update user profile by Super Admin
+// @route   PUT /api/auth/users/:id/admin
+// @access  Private/SuperAdmin
+const updateUserBySuperAdmin = async (req, res) => {
+    try {
+        if (!req.user || !req.user.isSuperAdmin) {
+            return res.status(403).json({ message: 'Not authorized as super admin' });
+        }
 
-module.exports = { loginUser, registerUser, getUserProfile, updateUserProfile };
+        const user = await User.findById(req.params.id);
+
+        if (user) {
+            user.email = req.body.email || user.email;
+            if (req.body.phone !== undefined) {
+                user.phone = req.body.phone;
+            }
+            if (req.body.password) {
+                user.password = req.body.password;
+            }
+
+            const updatedUser = await user.save();
+
+            res.json({
+                _id: updatedUser._id,
+                name: updatedUser.name,
+                email: updatedUser.email,
+                phone: updatedUser.phone,
+                role: updatedUser.role,
+            });
+        } else {
+            res.status(404).json({ message: 'User not found' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = { loginUser, registerUser, getUserProfile, updateUserProfile, updateUserBySuperAdmin };

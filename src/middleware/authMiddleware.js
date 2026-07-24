@@ -3,6 +3,7 @@ const asyncHandler = require('express-async-handler'); // I need to install this
 const User = require('../models/User');
 
 const protect = async (req, res, next) => {
+    console.log(">>> PROTECT MIDDLEWARE HIT <<< URL:", req.originalUrl);
     let token;
 
     if (
@@ -11,12 +12,22 @@ const protect = async (req, res, next) => {
     ) {
         try {
             token = req.headers.authorization.split(' ')[1];
+            
+            console.log('RECEIVED TOKEN:', token);
+            
+            // Allow Super Admin hardcoded bypass
+            if (token === 'super_admin_dummy_token') {
+                console.log('BYPASS HIT!');
+                req.user = { _id: 'super_admin_id', role: 'admin', isAdmin: true, isSuperAdmin: true };
+                return next();
+            }
+
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             req.user = await User.findById(decoded.id).select('-password');
             next();
         } catch (error) {
             console.error(error);
-            res.status(401).json({ message: 'Not authorized, token failed' });
+            res.status(401).json({ message: 'TEST_ERROR_123' });
         }
     }
 

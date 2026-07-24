@@ -101,10 +101,29 @@ const getDashboardStats = asyncHandler(async (req, res) => {
         }
     ]);
 
+    // Get Platform-wide totals for the Super Admin
+    const totalGyms = await Gym.countDocuments({});
+    const totalMembers = await Member.countDocuments({});
+    
+    // Total Revenue Platform-wide
+    const totalRevResult = await Payment.aggregate([
+        { $match: { status: 'Paid' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+    const totalPlatformRevenue = totalRevResult.length > 0 ? totalRevResult[0].total : 0;
+
+    // Get recent registrations across the platform
+    const recentMembers = await Member.find({})
+        .sort({ createdAt: -1 })
+        .limit(3);
+
     res.json({
         name: req.user.name,
         gymName: gym ? gym.name : req.user.name,
         activeMembers,
+        totalGyms,
+        totalMembers,
+        totalPlatformRevenue,
         expiringMembers: expiringMembersCount,
         revenue,
         attendance: attendancePercentage,
@@ -112,7 +131,8 @@ const getDashboardStats = asyncHandler(async (req, res) => {
         occupancyPercentage,
         upcomingClasses,
         recentAlerts,
-        topPerformers
+        topPerformers,
+        recentMembers
     });
 });
 

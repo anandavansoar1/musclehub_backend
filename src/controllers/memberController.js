@@ -8,8 +8,16 @@ const { getGymIdForAdmin } = require('./gymController');
 // @route   GET /api/members
 // @access  Private/Admin
 const getMembers = asyncHandler(async (req, res) => {
-    const gymId = await getGymIdForAdmin(req.user._id);
-    if (!gymId) return res.status(404).json({ message: 'Gym profile not found. Please set up your gym first.' });
+    let gymId;
+    if (!req.user.isSuperAdmin) {
+        gymId = await getGymIdForAdmin(req.user._id);
+    }
+    
+    if (req.query.gymId && req.user.isAdmin) {
+        gymId = req.query.gymId;
+    } else if (!gymId) {
+        return res.status(404).json({ message: 'Gym profile not found. Please set up your gym first.' });
+    }
 
     const { keyword, filter } = req.query;
     let query = { gymId };
@@ -131,8 +139,11 @@ const addMember = asyncHandler(async (req, res) => {
 // @route   GET /api/members/:id
 // @access  Private/Admin
 const getMemberById = asyncHandler(async (req, res) => {
-    const gymId = await getGymIdForAdmin(req.user._id);
-    const member = await Member.findOne({ _id: req.params.id, gymId });
+    let query = { _id: req.params.id };
+    if (!req.user.isSuperAdmin) {
+        query.gymId = await getGymIdForAdmin(req.user._id);
+    }
+    const member = await Member.findOne(query);
 
     if (member) {
         res.json(member);
@@ -146,8 +157,11 @@ const getMemberById = asyncHandler(async (req, res) => {
 // @route   PUT /api/members/:id
 // @access  Private/Admin
 const updateMember = asyncHandler(async (req, res) => {
-    const gymId = await getGymIdForAdmin(req.user._id);
-    const member = await Member.findOne({ _id: req.params.id, gymId });
+    let query = { _id: req.params.id };
+    if (!req.user.isSuperAdmin) {
+        query.gymId = await getGymIdForAdmin(req.user._id);
+    }
+    const member = await Member.findOne(query);
 
     if (!member) {
         res.status(404);
@@ -255,8 +269,11 @@ const renewMember = asyncHandler(async (req, res) => {
 // @route   DELETE /api/members/:id
 // @access  Private/Admin
 const deleteMember = asyncHandler(async (req, res) => {
-    const gymId = await getGymIdForAdmin(req.user._id);
-    const member = await Member.findOne({ _id: req.params.id, gymId });
+    let query = { _id: req.params.id };
+    if (!req.user.isSuperAdmin) {
+        query.gymId = await getGymIdForAdmin(req.user._id);
+    }
+    const member = await Member.findOne(query);
 
     if (member) {
         await member.deleteOne();

@@ -7,6 +7,7 @@ const {
     updateGym,
     initGym,
     listAllGyms,
+    deleteGym,
 } = require('../controllers/gymController');
 
 // Get / Create / Update the logged-in admin's gym profile
@@ -14,6 +15,9 @@ router.route('/')
     .get(protect, admin, getGym)
     .post(protect, admin, createGym)
     .put(protect, admin, updateGym);
+
+// Delete a gym (and all cascade data)
+router.delete('/:id', protect, admin, deleteGym);
 
 // Auto-init gym after registration
 router.post('/init', protect, admin, initGym);

@@ -22,8 +22,8 @@ const importData = async () => {
 
         const adminUser = new User({
             name: 'Admin User',
-            email: 'admin@musclehub.com',
-            password: 'adminpassword123', // Change this!
+            email: 'admin',
+            password: '1234', // Change this!
             role: 'admin',
             isAdmin: true,
         });

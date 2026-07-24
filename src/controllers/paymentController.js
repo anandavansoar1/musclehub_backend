@@ -7,8 +7,13 @@ const { getGymIdForAdmin } = require('./gymController');
 // @route   GET /api/payments
 // @access  Private/Admin
 const getPayments = asyncHandler(async (req, res) => {
-    const gymId = await getGymIdForAdmin(req.user._id);
-    if (!gymId) return res.status(404).json({ message: 'Gym not found' });
+    let gymId = await getGymIdForAdmin(req.user._id);
+    
+    if (req.query.gymId && req.user.isAdmin) {
+        gymId = req.query.gymId;
+    } else if (!gymId) {
+        return res.status(404).json({ message: 'Gym not found' });
+    }
 
     const payments = await Payment.find({ gymId })
         .populate('member', 'fullName phone')
