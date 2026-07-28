@@ -16,14 +16,15 @@ const createNotification = asyncHandler(async (req, res) => {
     const gymId = await getGymIdForAdmin(req.user._id);
     if (!gymId) return res.status(404).json({ message: 'Gym not found' });
 
-    const { title, message, type, targetAudience, expiresAt } = req.body;
+    const { title, message, type, targetAudience, expiresAt, targetUserId } = req.body;
 
     const notification = await Notification.create({
         gymId,
         title,
         message,
         type,
-        targetAudience,
+        targetAudience: targetUserId ? 'Members' : targetAudience,
+        targetUserId: targetUserId || null,
         expiresAt: expiresAt || null,
         createdBy: req.user._id,
     });
@@ -36,7 +37,14 @@ const createNotification = asyncHandler(async (req, res) => {
         try {
             let tokens = [];
 
-            if (targetAudience === 'All' || targetAudience === 'Members') {
+            if (targetUserId) {
+                // Targeted to one user
+                const user = await User.findOne({ _id: targetUserId, fcmToken: { $exists: true, $ne: null, $ne: '' } }).select('fcmToken');
+                if (user && user.fcmToken) {
+                    tokens.push(user.fcmToken);
+                    console.log('Targeted notification for user:', targetUserId);
+                }
+            } else if (targetAudience === 'All' || targetAudience === 'Members') {
                 console.log('Fetching tokens for targetAudience:', targetAudience);
 
                 // 1. Find all members of this gym
