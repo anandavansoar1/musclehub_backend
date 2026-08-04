@@ -37,18 +37,24 @@ const loginUser = async (req, res) => {
             // Member user → look up gym via their member record's gymId
             let gymName = 'MuscleHub';
             let gymId = null;
+            let subscriptionEndDate = null;
+            let isSubscriptionActive = true;
 
             if (user.role === 'admin') {
                 const gym = await Gym.findOne({ owner: user._id });
                 if (gym) {
                     gymName = gym.name;
                     gymId = gym._id;
+                    subscriptionEndDate = gym.subscriptionEndDate;
+                    isSubscriptionActive = !subscriptionEndDate || new Date() <= new Date(subscriptionEndDate);
                 }
             } else if (member && member.gymId) {
                 const gym = await Gym.findById(member.gymId);
                 if (gym) {
                     gymName = gym.name;
                     gymId = gym._id;
+                    subscriptionEndDate = gym.subscriptionEndDate;
+                    isSubscriptionActive = !subscriptionEndDate || new Date() <= new Date(subscriptionEndDate);
                 }
             }
 
@@ -62,6 +68,8 @@ const loginUser = async (req, res) => {
                 linkedMemberId: user.linkedMemberId,
                 gymName,
                 gymId,
+                subscriptionEndDate,
+                isSubscriptionActive,
                 member,
                 token: generateToken(user._id),
             });
@@ -147,18 +155,24 @@ const getUserProfile = async (req, res) => {
             let gymName = 'MuscleHub';
             let gymId = null;
             let gymProfile = null;
+            let subscriptionEndDate = null;
+            let isSubscriptionActive = true;
 
             if (user.role === 'admin') {
                 gymProfile = await Gym.findOne({ owner: user._id });
                 if (gymProfile) {
                     gymName = gymProfile.name;
                     gymId = gymProfile._id;
+                    subscriptionEndDate = gymProfile.subscriptionEndDate;
+                    isSubscriptionActive = !subscriptionEndDate || new Date() <= new Date(subscriptionEndDate);
                 }
             } else if (member && member.gymId) {
                 gymProfile = await Gym.findById(member.gymId);
                 if (gymProfile) {
                     gymName = gymProfile.name;
                     gymId = gymProfile._id;
+                    subscriptionEndDate = gymProfile.subscriptionEndDate;
+                    isSubscriptionActive = !subscriptionEndDate || new Date() <= new Date(subscriptionEndDate);
                 }
             }
 
@@ -173,6 +187,8 @@ const getUserProfile = async (req, res) => {
                 linkedMemberId: user.linkedMemberId,
                 gymName,
                 gymId,
+                subscriptionEndDate,
+                isSubscriptionActive,
                 gymOpenOnSunday: gymProfile ? gymProfile.openOnSunday : user.gymOpenOnSunday,
                 member,
             });

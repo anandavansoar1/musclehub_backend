@@ -170,6 +170,33 @@ const deleteGym = asyncHandler(async (req, res) => {
     res.json({ message: 'Gym and all associated data deleted successfully' });
 });
 
+// @desc    Update a gym's subscription end date (Super Admin use only)
+// @route   PUT /api/gym/:id/subscription
+// @access  Private/Admin (future: SuperAdmin)
+const updateGymSubscription = asyncHandler(async (req, res) => {
+    const gymId = req.params.id;
+    const { addDays, newDate } = req.body;
+
+    const gym = await Gym.findById(gymId);
+    if (!gym) {
+        res.status(404);
+        throw new Error('Gym not found');
+    }
+
+    if (newDate) {
+        gym.subscriptionEndDate = new Date(newDate);
+    } else if (addDays) {
+        const currentDate = gym.subscriptionEndDate && gym.subscriptionEndDate > new Date() 
+            ? new Date(gym.subscriptionEndDate) 
+            : new Date();
+        currentDate.setDate(currentDate.getDate() + addDays);
+        gym.subscriptionEndDate = currentDate;
+    }
+
+    const updatedGym = await gym.save();
+    res.json(updatedGym);
+});
+
 module.exports = {
     getGym,
     createGym,
@@ -178,4 +205,5 @@ module.exports = {
     listAllGyms,
     getGymIdForAdmin,
     deleteGym,
+    updateGymSubscription,
 };

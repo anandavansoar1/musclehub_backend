@@ -104,7 +104,7 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     // Get Platform-wide totals for the Super Admin
     const totalGyms = await Gym.countDocuments({});
     const totalMembers = await Member.countDocuments({});
-    
+
     // Total Revenue Platform-wide
     const totalRevResult = await Payment.aggregate([
         { $match: { status: 'Paid' } },

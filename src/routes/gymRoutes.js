@@ -8,6 +8,7 @@ const {
     initGym,
     listAllGyms,
     deleteGym,
+    updateGymSubscription,
 } = require('../controllers/gymController');
 
 // Get / Create / Update the logged-in admin's gym profile
@@ -24,5 +25,8 @@ router.post('/init', protect, admin, initGym);
 
 // List all gyms (platform-level view)
 router.get('/all', protect, admin, listAllGyms);
+
+// Update a gym's subscription
+router.put('/:id/subscription', protect, admin, updateGymSubscription);
 
 module.exports = router;

@@ -4,9 +4,21 @@ const { getGymIdForAdmin } = require('./gymController');
 
 // @desc    Get all inventory items for the logged-in gym
 // @route   GET /api/inventory
-// @access  Private/Admin
+// @access  Private
 const getInventory = asyncHandler(async (req, res) => {
-    const gymId = await getGymIdForAdmin(req.user._id);
+    let gymId = await getGymIdForAdmin(req.user._id);
+
+    // If not admin, try to get gymId from user's linked Member profile
+    if (!gymId) {
+        const Member = require('../models/Member');
+        const member = await Member.findOne({ userId: req.user._id });
+        if (member) {
+            gymId = member.gymId;
+        } else if (req.user.gymId) {
+            gymId = req.user.gymId;
+        }
+    }
+
     if (!gymId) return res.status(404).json({ message: 'Gym not found' });
 
     const items = await Inventory.find({ gymId }).sort({ createdAt: -1 });
