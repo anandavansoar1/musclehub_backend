@@ -250,4 +250,90 @@ const getHistory = async (req, res) => {
     }
 };
 
-module.exports = { generateCheckInToken, checkIn, getHistory, manualCheckIn, checkOut };
+// @desc    Get attendance history for a specific member by ID
+// @route   GET /api/attendance/member/:memberId/history
+// @access  Admin
+const getMemberHistory = async (req, res) => {
+    try {
+        const { memberId } = req.params;
+        const member = await Member.findById(memberId);
+        
+        if (!member) {
+            return res.status(404).json({ message: 'Member not found' });
+        }
+
+        const history = await Attendance.find({ member: member._id })
+            .sort({ checkInTime: -1 });
+
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+        const thisMonthAttendance = history.filter(a => new Date(a.checkInTime) >= startOfMonth);
+
+        let gymOpenOnSunday = true;
+        if (member && member.gymId) {
+            const gym = await Gym.findById(member.gymId);
+            if (gym) gymOpenOnSunday = gym.openOnSunday;
+        }
+
+        // Calculate streak
+        const sortedDates = history.map(a => {
+            const d = new Date(a.checkInTime);
+            d.setHours(0, 0, 0, 0);
+            return d.getTime();
+        }).sort((a, b) => b - a);
+
+        const uniqueDates = [...new Set(sortedDates)];
+        const attendanceSet = new Set(uniqueDates);
+
+        let currentCheckDate = new Date();
+        currentCheckDate.setHours(0, 0, 0, 0);
+        let streakCount = 0;
+
+        for (let i = 0; i < 365; i++) {
+            const checkTime = currentCheckDate.getTime();
+            const dayOfWeek = currentCheckDate.getDay();
+
+            if (attendanceSet.has(checkTime)) {
+                streakCount++;
+            } else {
+                if (dayOfWeek === 0 && !gymOpenOnSunday) {
+                    // Sunday, gym closed — skip without breaking streak
+                } else if (i === 0) {
+                    // Today, hasn't attended yet — check yesterday
+                } else {
+                    break;
+                }
+            }
+            currentCheckDate.setDate(currentCheckDate.getDate() - 1);
+        }
+
+        const totalMinutes = history.reduce((sum, a) => sum + (a.duration || 0), 0);
+        const totalHours = Math.round(totalMinutes / 60 * 10) / 10;
+        const completionPercentage = Math.round((thisMonthAttendance.length / daysInMonth) * 100);
+
+        res.json({
+            history,
+            stats: {
+                totalWorkouts: history.length,
+                currentStreak: streakCount,
+                thisMonth: thisMonthAttendance.length,
+                completionPercentage,
+                totalHours,
+                gymOpenOnSunday,
+                attendedDates: uniqueDates.map(d => {
+                    const dateObj = new Date(d);
+                    const year = dateObj.getFullYear();
+                    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                    const day = String(dateObj.getDate()).padStart(2, '0');
+                    return `${year}-${month}-${day}`;
+                })
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = { generateCheckInToken, checkIn, getHistory, manualCheckIn, checkOut, getMemberHistory };
