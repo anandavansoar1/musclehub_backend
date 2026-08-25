@@ -5,6 +5,9 @@ const connectDB = require('./src/config/db');
 const authRoutes = require('./src/routes/authRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const memberRoutes = require('./src/routes/memberRoutes');
+const equipmentRoutes = require('./src/routes/equipmentRoutes');
+const inventoryRoutes = require('./src/routes/inventoryRoutes');
+const planAssignmentRoutes = require('./src/routes/planAssignmentRoutes');
 
 dotenv.config();
 
@@ -18,6 +21,9 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/members', memberRoutes);
+app.use('/api/equipment', equipmentRoutes);
+app.use('/api/inventory', inventoryRoutes);
+app.use('/api/plans', planAssignmentRoutes);
 app.use('/api/gym', require('./src/routes/gymRoutes'));
 app.use('/api/attendance', require('./src/routes/attendanceRoutes'));
 app.use('/api/notifications', require('./src/routes/notificationRoutes'));
@@ -27,6 +33,7 @@ app.use('/api/plans', require('./src/routes/planRoutes'));
 app.use('/api/durations', require('./src/routes/durationRoutes'));
 app.use('/api/payments', require('./src/routes/paymentRoutes'));
 app.use('/api/classes', require('./src/routes/workoutClassRoutes'));
+app.use('/api/coaches', require('./src/routes/coachRoutes'));
 app.use('/api/community', require('./src/routes/communityRoutes'));
 app.use('/api/ai', require('./src/routes/aiRoutes'));
 app.use('/api/app', require('./src/routes/appRoutes'));

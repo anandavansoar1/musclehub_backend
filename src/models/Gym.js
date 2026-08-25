@@ -40,6 +40,10 @@ const gymSchema = new mongoose.Schema({
         type: String,
         default: '',
     },
+    location: {
+        type: String,
+        default: '',
+    },
     address: {
         type: String,
         default: '',
@@ -69,6 +73,10 @@ const gymSchema = new mongoose.Schema({
     openOnSunday: {
         type: Boolean,
         default: true,
+    },
+    currency: {
+        type: String,
+        default: '₹',
     },
 
     // Capacity

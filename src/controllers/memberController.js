@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const Member = require('../models/Member');
 const User = require('../models/User');
+const Coach = require('../models/Coach');
 const Payment = require('../models/Payment');
 const { getGymIdForAdmin } = require('./gymController');
 
@@ -9,27 +10,41 @@ const { getGymIdForAdmin } = require('./gymController');
 // @access  Private/Admin
 const getMembers = asyncHandler(async (req, res) => {
     let gymId;
-    if (!req.user.isSuperAdmin) {
-        gymId = await getGymIdForAdmin(req.user._id);
-    }
+    let query = {};
     
-    if (req.query.gymId && req.user.isAdmin) {
-        gymId = req.query.gymId;
-    } else if (!gymId) {
-        return res.status(404).json({ message: 'Gym profile not found. Please set up your gym first.' });
+    if (req.user.role === 'admin' || req.user.role === 'superadmin') {
+        if (!req.user.isSuperAdmin) {
+            gymId = await getGymIdForAdmin(req.user._id);
+        } else if (req.query.gymId) {
+            gymId = req.query.gymId;
+        }
+        
+        if (!gymId) {
+            return res.status(404).json({ message: 'Gym profile not found. Please set up your gym first.' });
+        }
+        query.gymId = gymId;
+    } else if (req.user.role === 'coach') {
+        gymId = req.user.gymId;
+        if (!gymId) {
+            return res.status(404).json({ message: 'Coach gym not found.' });
+        }
+        const coach = await Coach.findById(req.user.linkedCoachId);
+        if (coach) {
+            query.trainer = coach.name;
+        }
+        query.gymId = gymId;
+    } else {
+        res.status(403);
+        throw new Error('Not authorized to view members');
     }
 
     const { keyword, filter } = req.query;
-    let query = { gymId };
 
     if (keyword) {
-        query = {
-            gymId,
-            $or: [
-                { fullName: { $regex: keyword, $options: 'i' } },
-                { phone: { $regex: keyword, $options: 'i' } }
-            ]
-        };
+        query.$or = [
+            { fullName: { $regex: keyword, $options: 'i' } },
+            { phone: { $regex: keyword, $options: 'i' } }
+        ];
     }
 
     if (filter && filter !== 'All') {

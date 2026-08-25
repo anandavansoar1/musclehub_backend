@@ -1,6 +1,8 @@
 const asyncHandler = require('express-async-handler');
 const Inventory = require('../models/Inventory');
 const { getGymIdForAdmin } = require('./gymController');
+const User = require('../models/User');
+const { sendMulticastNotification } = require('../services/firebaseService');
 
 // @desc    Get all inventory items for the logged-in gym
 // @route   GET /api/inventory
@@ -60,15 +62,42 @@ const updateInventory = asyncHandler(async (req, res) => {
     const item = await Inventory.findOne({ _id: req.params.id, gymId });
 
     if (item) {
+        const oldQuantity = item.quantity;
+        const newQuantity = req.body.quantity !== undefined ? Number(req.body.quantity) : item.quantity;
+
         item.name = req.body.name || item.name;
         item.category = req.body.category || item.category;
         item.description = req.body.description || item.description;
-        item.quantity = req.body.quantity !== undefined ? req.body.quantity : item.quantity;
+        item.quantity = newQuantity;
         item.price = req.body.price !== undefined ? req.body.price : item.price;
         item.restockThreshold = req.body.restockThreshold !== undefined ? req.body.restockThreshold : item.restockThreshold;
         if (req.body.quantity !== undefined) item.lastRestocked = Date.now();
 
         const updatedItem = await item.save();
+
+        // Trigger push notification if stock drops to or below threshold
+        if (
+            req.body.quantity !== undefined && 
+            oldQuantity > updatedItem.restockThreshold && 
+            newQuantity <= updatedItem.restockThreshold
+        ) {
+            try {
+                const admins = await User.find({ gymId, role: { $in: ['admin', 'superadmin'] } });
+                const tokens = admins.map(admin => admin.fcmToken).filter(token => token);
+                
+                if (tokens.length > 0) {
+                    await sendMulticastNotification(
+                        tokens,
+                        'Low Stock Alert ⚠️',
+                        `${updatedItem.name} is running low! Only ${newQuantity} left in stock.`,
+                        { type: 'INVENTORY_ALERT', itemId: updatedItem._id.toString() }
+                    );
+                }
+            } catch (err) {
+                console.error('Error sending low stock notification:', err);
+            }
+        }
+
         res.json(updatedItem);
     } else {
         res.status(404);

@@ -328,72 +328,76 @@ const getReportsData = asyncHandler(async (req, res) => {
         ? ((droppedMembersCount / (activeMembersCount + droppedMembersCount)) * 100).toFixed(1)
         : 0;
 
-    // 4. Revenue Trend (last 6 months basically, grouped by month)
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(now.getMonth() - 5);
-    sixMonthsAgo.setDate(1);
-    sixMonthsAgo.setHours(0, 0, 0, 0);
-
-    const trendResult = await Payment.aggregate([
-        { $match: { gymId, type: 'Membership', status: 'Paid', createdAt: { $gte: sixMonthsAgo } } },
-        {
-            $group: {
-                _id: { month: { $month: "$createdAt" }, year: { $year: "$createdAt" } },
-                total: { $sum: '$amount' }
-            }
-        },
-        { $sort: { "_id.year": 1, "_id.month": 1 } }
-    ]);
-
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     let revenueTrend = [];
-
-    // Fill empty months if needed
-    for (let i = 0; i < 6; i++) {
-        const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
-        const match = trendResult.find(t => t._id.month === d.getMonth() + 1 && t._id.year === d.getFullYear());
-        revenueTrend.push({
-            label: monthNames[d.getMonth()],
-            value: match ? match.total : 0
-        });
-    }
-
-    // 5. Attendance (Last 7 days)
-    const last7Days = new Date();
-    last7Days.setDate(now.getDate() - 6);
-    last7Days.setHours(0, 0, 0, 0);
-
-    const gymMemberIds = await Member.find({ gymId }).distinct('_id');
-    const attendanceResult = await Attendance.aggregate([
-        { $match: { member: { $in: gymMemberIds }, date: { $gte: last7Days } } },
-        {
-            $group: {
-                _id: { $dayOfWeek: "$date" }, // 1 (Sun) - 7 (Sat)
-                count: { $sum: 1 }
-            }
-        }
-    ]);
-
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    let attendanceTrend = [];
-    // Last 7 days in order
-    for (let i = 0; i < 7; i++) {
-        const d = new Date(last7Days.getTime());
-        d.setDate(d.getDate() + i);
-        const dayOfWeekIndex = d.getDay() + 1; // getDay is 0 (Sun), mongo is 1 (Sun)
-        const match = attendanceResult.find(a => a._id === dayOfWeekIndex);
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-        // Calculate percentage assuming avg members active this week is `activeMembersCount`
-        let percent = 0;
-        if (activeMembersCount > 0) {
-            percent = match ? Math.min(100, Math.round((match.count / activeMembersCount) * 100)) : 0;
+    if (period === 'Week') {
+        const trendResult = await Payment.aggregate([
+            { $match: { gymId, type: 'Membership', status: 'Paid', createdAt: { $gte: startDate } } },
+            {
+                $group: {
+                    _id: { $dayOfWeek: "$createdAt" }, // 1 (Sun) - 7 (Sat)
+                    total: { $sum: '$amount' }
+                }
+            }
+        ]);
+        
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(startDate.getTime());
+            d.setDate(d.getDate() + i);
+            const dayOfWeekIndex = d.getDay() + 1;
+            const match = trendResult.find(t => t._id === dayOfWeekIndex);
+            revenueTrend.push({
+                label: dayNames[d.getDay()],
+                value: match ? match.total : 0
+            });
         }
+    } else if (period === 'Month') {
+        const trendResult = await Payment.aggregate([
+            { $match: { gymId, type: 'Membership', status: 'Paid', createdAt: { $gte: startDate } } },
+            {
+                $project: {
+                    amount: 1,
+                    daysDiff: { $floor: { $divide: [ { $subtract: ["$createdAt", startDate] }, 1000 * 60 * 60 * 24 ] } }
+                }
+            },
+            {
+                $group: {
+                    _id: { $floor: { $divide: ["$daysDiff", 7.5] } }, // 0, 1, 2, 3
+                    total: { $sum: '$amount' }
+                }
+            }
+        ]);
 
-        attendanceTrend.push({
-            label: dayNames[d.getDay()],
-            value: percent,
-            color: '#38BDF8'
-        });
+        for (let i = 0; i < 4; i++) {
+            const match = trendResult.find(t => t._id === i);
+            revenueTrend.push({
+                label: `Week ${i + 1}`,
+                value: match ? match.total : 0
+            });
+        }
+    } else {
+        // Year
+        const trendResult = await Payment.aggregate([
+            { $match: { gymId, type: 'Membership', status: 'Paid', createdAt: { $gte: startDate } } },
+            {
+                $group: {
+                    _id: { month: { $month: "$createdAt" }, year: { $year: "$createdAt" } },
+                    total: { $sum: '$amount' }
+                }
+            },
+            { $sort: { "_id.year": 1, "_id.month": 1 } }
+        ]);
+        
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1);
+            const match = trendResult.find(t => t._id.month === d.getMonth() + 1 && t._id.year === d.getFullYear());
+            revenueTrend.push({
+                label: monthNames[d.getMonth()],
+                value: match ? match.total : 0
+            });
+        }
     }
 
     // 6. Top Membership Plans (overall currently active)
@@ -405,14 +409,30 @@ const getReportsData = asyncHandler(async (req, res) => {
                 count: { $sum: 1 }
             }
         },
-        { $sort: { count: -1 } },
-        { $limit: 3 }
+        { $sort: { count: -1 } }
     ]);
 
-    const colors = ['#E11D48', '#FACC15', '#38BDF8'];
+    const Plan = require('../models/Plan');
+    const actualPlans = await Plan.find({ gymId }).select('name');
+    const validPlanNames = actualPlans.map(p => p.name);
+
+    let allPlansData = validPlanNames.map(name => {
+        const found = planResult.find(p => p._id === name);
+        return {
+            _id: name,
+            count: found ? found.count : 0
+        };
+    });
+
+    allPlansData.sort((a, b) => b.count - a.count);
+
+    // Show top 5 instead of 3, or all if less than 5
+    const filteredPlanResult = allPlansData.slice(0, 5);
+
+    const colors = ['#E11D48', '#FACC15', '#38BDF8', '#10B981', '#8B5CF6'];
     const totalActiveBase = Math.max(activeMembersCount, 1);
 
-    const topPlans = planResult.map((p, index) => ({
+    const topPlans = filteredPlanResult.map((p, index) => ({
         name: p._id || 'Standard',
         count: p.count,
         percent: `${Math.round((p.count / totalActiveBase) * 100)}%`,
@@ -424,7 +444,6 @@ const getReportsData = asyncHandler(async (req, res) => {
         activeConversions: newMembersCount,
         dropoutRate: dropoutRate,
         revenueTrend,
-        attendanceTrend,
         topPlans
     });
 });

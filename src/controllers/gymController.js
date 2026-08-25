@@ -149,6 +149,12 @@ const deleteGym = asyncHandler(async (req, res) => {
     await WorkoutClass.deleteMany({ gymId });
     await Notification.deleteMany({ gymId });
     
+    // Also delete coaches
+    try { 
+        const Coach = require('../models/Coach');
+        await Coach.deleteMany({ gymId }); 
+    } catch (e) {}
+    
     // Check if Equipment/Inventory models exist in this context (some might fail if not loaded, but we required them)
     try { await Equipment.deleteMany({ gymId }); } catch (e) {}
     try { await Inventory.deleteMany({ gymId }); } catch (e) {}

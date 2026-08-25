@@ -83,8 +83,19 @@ const generateDefaultPlans = asyncHandler(async (req, res) => {
         { gymId, name: 'Cardio', price: 800, duration: '1 Month', description: 'Full gym and cardio area access' }
     ];
 
-    const createdPlans = await Plan.insertMany(defaultPlans);
-    res.status(201).json(createdPlans);
+    // Get existing plans to avoid exact duplicates
+    const existingPlans = await Plan.find({ gymId });
+    const existingNames = existingPlans.map(p => p.name);
+
+    // Filter out defaults that already exist
+    const toInsert = defaultPlans.filter(p => !existingNames.includes(p.name));
+
+    if (toInsert.length > 0) {
+        await Plan.insertMany(toInsert);
+    }
+
+    const plans = await Plan.find({ gymId }).sort({ price: 1 });
+    res.status(201).json(plans);
 });
 
 module.exports = { getPlans, createPlan, deletePlan, updatePlan, generateDefaultPlans };

@@ -25,6 +25,11 @@ const userSchema = mongoose.Schema({
         ref: 'Member',
         required: false
     },
+    linkedCoachId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Coach',
+        required: false
+    },
     // For member users: which gym (admin) they belong to
     gymId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -33,7 +38,7 @@ const userSchema = mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['user', 'admin'],
+        enum: ['user', 'admin', 'coach'],
         default: 'user',
     },
     isAdmin: {

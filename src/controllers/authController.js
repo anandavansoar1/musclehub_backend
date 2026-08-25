@@ -39,6 +39,7 @@ const loginUser = async (req, res) => {
             let gymId = null;
             let subscriptionEndDate = null;
             let isSubscriptionActive = true;
+            let currency = '₹';
 
             if (user.role === 'admin') {
                 const gym = await Gym.findOne({ owner: user._id });
@@ -47,6 +48,7 @@ const loginUser = async (req, res) => {
                     gymId = gym._id;
                     subscriptionEndDate = gym.subscriptionEndDate;
                     isSubscriptionActive = !subscriptionEndDate || new Date() <= new Date(subscriptionEndDate);
+                    currency = gym.currency || '₹';
                 }
             } else if (member && member.gymId) {
                 const gym = await Gym.findById(member.gymId);
@@ -55,6 +57,7 @@ const loginUser = async (req, res) => {
                     gymId = gym._id;
                     subscriptionEndDate = gym.subscriptionEndDate;
                     isSubscriptionActive = !subscriptionEndDate || new Date() <= new Date(subscriptionEndDate);
+                    currency = gym.currency || '₹';
                 }
             }
 
@@ -70,6 +73,7 @@ const loginUser = async (req, res) => {
                 gymId,
                 subscriptionEndDate,
                 isSubscriptionActive,
+                currency,
                 member,
                 token: generateToken(user._id),
             });
@@ -85,9 +89,9 @@ const loginUser = async (req, res) => {
 // @route   POST /api/auth/register
 // @access  Public
 const registerUser = async (req, res) => {
-    const { name, email, phone, password, role, isAdmin, gymName } = req.body;
+    const { name, email, phone, password, role, isAdmin, gymName, gymLocation } = req.body;
 
-    console.log('Register request data:', { name, email, phone, role, isAdmin, gymName });
+    console.log('Register request data:', { name, email, phone, role, isAdmin, gymName, gymLocation });
 
     try {
         const userExists = await User.findOne({ 
@@ -114,6 +118,7 @@ const registerUser = async (req, res) => {
             gym = await Gym.create({
                 owner: user._id,
                 name: gymName || name, // Use provided gym name or fallback to admin's name
+                location: gymLocation || '', 
             });
             console.log(`Auto-created Gym document for admin: ${user.name} → Gym: ${gym.name} (${gym._id})`);
         }
@@ -128,6 +133,7 @@ const registerUser = async (req, res) => {
                 premiumFeatureAccess: user.premiumFeatureAccess,
                 gymName: gym ? gym.name : null,
                 gymId: gym ? gym._id : null,
+                currency: gym ? gym.currency : '₹',
                 token: generateToken(user._id),
             });
         } else {
@@ -157,6 +163,7 @@ const getUserProfile = async (req, res) => {
             let gymProfile = null;
             let subscriptionEndDate = null;
             let isSubscriptionActive = true;
+            let currency = '₹';
 
             if (user.role === 'admin') {
                 gymProfile = await Gym.findOne({ owner: user._id });
@@ -165,6 +172,7 @@ const getUserProfile = async (req, res) => {
                     gymId = gymProfile._id;
                     subscriptionEndDate = gymProfile.subscriptionEndDate;
                     isSubscriptionActive = !subscriptionEndDate || new Date() <= new Date(subscriptionEndDate);
+                    currency = gymProfile.currency || '₹';
                 }
             } else if (member && member.gymId) {
                 gymProfile = await Gym.findById(member.gymId);
@@ -173,6 +181,7 @@ const getUserProfile = async (req, res) => {
                     gymId = gymProfile._id;
                     subscriptionEndDate = gymProfile.subscriptionEndDate;
                     isSubscriptionActive = !subscriptionEndDate || new Date() <= new Date(subscriptionEndDate);
+                    currency = gymProfile.currency || '₹';
                 }
             }
 
@@ -190,6 +199,7 @@ const getUserProfile = async (req, res) => {
                 subscriptionEndDate,
                 isSubscriptionActive,
                 gymOpenOnSunday: gymProfile ? gymProfile.openOnSunday : user.gymOpenOnSunday,
+                currency,
                 member,
             });
         } else {
@@ -221,11 +231,12 @@ const updateUserProfile = async (req, res) => {
             }
 
             // If admin is updating gym-related settings, update the Gym document
-            if (user.role === 'admin') {
+            if (user.role === 'admin' || user.isAdmin) {
                 const gym = await Gym.findOne({ owner: user._id });
                 if (gym) {
                     if (req.body.gymName) gym.name = req.body.gymName;
                     if (req.body.gymOpenOnSunday !== undefined) gym.openOnSunday = req.body.gymOpenOnSunday;
+                    if (req.body.currency !== undefined) gym.currency = req.body.currency;
                     await gym.save();
                 }
             }
@@ -265,6 +276,14 @@ const updateUserBySuperAdmin = async (req, res) => {
             }
             if (req.body.password) {
                 user.password = req.body.password;
+            }
+
+            if (req.body.currency) {
+                const gym = await Gym.findOne({ owner: user._id });
+                if (gym) {
+                    gym.currency = req.body.currency;
+                    await gym.save();
+                }
             }
 
             const updatedUser = await user.save();
