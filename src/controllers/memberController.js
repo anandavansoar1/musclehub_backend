@@ -70,7 +70,7 @@ const addMember = asyncHandler(async (req, res) => {
     const gymId = await getGymIdForAdmin(req.user._id);
     if (!gymId) return res.status(404).json({ message: 'Gym profile not found. Please set up your gym first.' });
 
-    const { fullName, phone, email, membershipType, durationMonths, trainer, gender, address, emergencyContact, price, planDuration } = req.body;
+    const { fullName, phone, email, membershipType, durationMonths, trainer, gender, address, emergencyContact, price, planDuration, image } = req.body;
 
     if (!fullName || !phone || !membershipType) {
         res.status(400);
@@ -107,6 +107,7 @@ const addMember = asyncHandler(async (req, res) => {
         gender,
         address,
         emergencyContact,
+        image,
         startDate: new Date(),
         endDate,
         trainer: trainer || 'None',

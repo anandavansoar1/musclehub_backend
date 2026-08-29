@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const connectDB = require('./src/config/db');
@@ -37,6 +38,9 @@ app.use('/api/coaches', require('./src/routes/coachRoutes'));
 app.use('/api/community', require('./src/routes/communityRoutes'));
 app.use('/api/ai', require('./src/routes/aiRoutes'));
 app.use('/api/app', require('./src/routes/appRoutes'));
+app.use('/api/upload', require('./src/routes/uploadRoutes'));
+app.use('/api/platform-payments', require('./src/routes/platformPaymentRoutes'));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.get('/', (req, res) => {
     res.send('API is running...');

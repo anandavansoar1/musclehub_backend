@@ -7,7 +7,7 @@ const getAppVersion = async (req, res) => {
             latestVersion: '1.0.1',
             minSupportedVersion: '1.0.0',
             forceUpdate: false,
-            updateUrl: 'https://github.com', // Replace with direct APK download URL or Play Store/App Store link
+            updateUrl: 'https://play.google.com/store/apps/details?id=com.musclehub', 
             releaseNotes: [
                 'Instant attendance QR scanner optimization',
                 'Auto member-linking for active memberships',
