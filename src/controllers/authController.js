@@ -303,4 +303,62 @@ const updateUserBySuperAdmin = async (req, res) => {
     }
 };
 
-module.exports = { loginUser, registerUser, getUserProfile, updateUserProfile, updateUserBySuperAdmin };
+// @desc    Super Admin login
+// @route   POST /api/auth/superadmin/login
+// @access  Public
+const superAdminLogin = async (req, res) => {
+    const { password } = req.body;
+    try {
+        let settings = await require('../models/PlatformSettings').findOne();
+        if (!settings) {
+            settings = await require('../models/PlatformSettings').create({});
+        }
+
+        if (await settings.matchSuperAdminPassword(password)) {
+            const token = generateToken('SUPERADMIN');
+            res.json({
+                _id: 'SUPERADMIN',
+                name: 'Super Admin',
+                role: 'admin',
+                isAdmin: true,
+                isSuperAdmin: true,
+                currency: '₹', // Or global platform currency if added later
+                token
+            });
+        } else {
+            res.status(401).json({ message: 'Invalid super admin credentials' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Update Super Admin password
+// @route   PUT /api/auth/superadmin/password
+// @access  Private/SuperAdmin
+const superAdminUpdatePassword = async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    try {
+        if (!req.user || !req.user.isSuperAdmin) {
+            return res.status(403).json({ message: 'Not authorized as super admin' });
+        }
+
+        const settings = await require('../models/PlatformSettings').findOne();
+        
+        if (!settings) {
+             return res.status(404).json({ message: 'Platform settings not found' });
+        }
+
+        if (await settings.matchSuperAdminPassword(currentPassword)) {
+            settings.superAdminPassword = newPassword;
+            await settings.save();
+            res.json({ message: 'Password updated successfully' });
+        } else {
+            res.status(401).json({ message: 'Incorrect current password' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = { loginUser, registerUser, getUserProfile, updateUserProfile, updateUserBySuperAdmin, superAdminLogin, superAdminUpdatePassword };

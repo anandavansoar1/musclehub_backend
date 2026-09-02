@@ -18,15 +18,19 @@ const protect = async (req, res, next) => {
             
             console.log('RECEIVED TOKEN:', token);
             
-            // Allow Super Admin hardcoded bypass
-            if (token === 'super_admin_dummy_token') {
-                console.log('BYPASS HIT!');
-                req.user = { _id: 'super_admin_id', role: 'admin', isAdmin: true, isSuperAdmin: true };
+            // Check if it's the real super admin token
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            
+            if (decoded.id === 'SUPERADMIN') {
+                req.user = { _id: 'SUPERADMIN', role: 'admin', isAdmin: true, isSuperAdmin: true };
                 return next();
             }
 
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
             req.user = await User.findById(decoded.id).select('-password');
+            
+            if (!req.user) {
+                return res.status(401).json({ message: 'User not found' });
+            }
             next();
         } catch (error) {
             console.error(error);
