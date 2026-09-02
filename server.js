@@ -40,6 +40,7 @@ app.use('/api/ai', require('./src/routes/aiRoutes'));
 app.use('/api/app', require('./src/routes/appRoutes'));
 app.use('/api/upload', require('./src/routes/uploadRoutes'));
 app.use('/api/platform-payments', require('./src/routes/platformPaymentRoutes'));
+app.use('/api/platform-settings', require('./src/routes/platformSettingsRoutes'));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.get('/', (req, res) => {

@@ -14,6 +14,16 @@ const gymSchema = new mongoose.Schema({
         required: true,
         unique: true, // One gym per admin account
     },
+    customUpiId: {
+        type: String,
+        default: ''
+    },
+    customPlatformPlans: [{
+        id: { type: String, required: true },
+        label: { type: String, required: true },
+        days: { type: Number, required: true },
+        amount: { type: Number, required: true }
+    }],
 
     // Gym Identity
     name: {
