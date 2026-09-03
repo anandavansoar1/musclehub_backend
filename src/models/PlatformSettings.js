@@ -17,22 +17,21 @@ const PlatformSettingsSchema = new mongoose.Schema({
         type: String,
         required: true,
         // Pre-hashed '1234' using bcrypt as the default
-        default: '$2a$10$w8T0h/NqXN6R2S5i.6M0/.fQ6/b8t9kR9V0F.q70K6Y/Y6/z56/qO' 
+        default: '$2b$10$ZYXlfMZeDaGO/rle/hTBF.bDXJFybgMRaMPTIgl36NIVuCHjDPYDu' 
     }
 }, { timestamps: true });
 
-PlatformSettingsSchema.pre('save', async function (next) {
+PlatformSettingsSchema.pre('save', async function () {
     if (!this.isModified('superAdminPassword')) {
-        return next();
+        return;
     }
     const salt = await bcrypt.genSalt(10);
     this.superAdminPassword = await bcrypt.hash(this.superAdminPassword, salt);
-    next();
 });
 
 PlatformSettingsSchema.methods.matchSuperAdminPassword = async function (enteredPassword) {
     // If the database document is old and doesn't have the password field yet, use the default hash for '1234'
-    const storedHash = this.superAdminPassword || '$2a$10$w8T0h/NqXN6R2S5i.6M0/.fQ6/b8t9kR9V0F.q70K6Y/Y6/z56/qO';
+    const storedHash = this.superAdminPassword || '$2b$10$ZYXlfMZeDaGO/rle/hTBF.bDXJFybgMRaMPTIgl36NIVuCHjDPYDu';
     return await bcrypt.compare(enteredPassword, storedHash);
 };
 
