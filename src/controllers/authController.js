@@ -314,7 +314,12 @@ const superAdminLogin = async (req, res) => {
             settings = await require('../models/PlatformSettings').create({});
         }
 
-        if (await settings.matchSuperAdminPassword(password)) {
+        console.log("SuperAdmin Login Attempt. Password received:", password);
+        console.log("Stored Hash in DB:", settings.superAdminPassword);
+        const isMatch = await settings.matchSuperAdminPassword(password);
+        console.log("Password Match result:", isMatch);
+
+        if (isMatch) {
             const token = generateToken('SUPERADMIN');
             res.json({
                 _id: 'SUPERADMIN',
