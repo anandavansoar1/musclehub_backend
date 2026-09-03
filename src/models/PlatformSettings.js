@@ -31,7 +31,9 @@ PlatformSettingsSchema.pre('save', async function (next) {
 });
 
 PlatformSettingsSchema.methods.matchSuperAdminPassword = async function (enteredPassword) {
-    return await bcrypt.compare(enteredPassword, this.superAdminPassword);
+    // If the database document is old and doesn't have the password field yet, use the default hash for '1234'
+    const storedHash = this.superAdminPassword || '$2a$10$w8T0h/NqXN6R2S5i.6M0/.fQ6/b8t9kR9V0F.q70K6Y/Y6/z56/qO';
+    return await bcrypt.compare(enteredPassword, storedHash);
 };
 
 module.exports = mongoose.model('PlatformSettings', PlatformSettingsSchema);
