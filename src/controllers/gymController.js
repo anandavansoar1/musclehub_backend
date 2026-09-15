@@ -181,7 +181,7 @@ const deleteGym = asyncHandler(async (req, res) => {
 // @access  Private/Admin (future: SuperAdmin)
 const updateGymSubscription = asyncHandler(async (req, res) => {
     const gymId = req.params.id;
-    const { addDays, newDate } = req.body;
+    const { addDays, newDate, isActive } = req.body;
 
     const gym = await Gym.findById(gymId);
     if (!gym) {
@@ -189,14 +189,24 @@ const updateGymSubscription = asyncHandler(async (req, res) => {
         throw new Error('Gym not found');
     }
 
+    if (isActive !== undefined) {
+        gym.isActive = isActive;
+    }
+
     if (newDate) {
         gym.subscriptionEndDate = new Date(newDate);
+        if (new Date(newDate) <= new Date()) {
+            gym.isActive = false;
+        } else {
+            gym.isActive = true;
+        }
     } else if (addDays) {
         const currentDate = gym.subscriptionEndDate && gym.subscriptionEndDate > new Date() 
             ? new Date(gym.subscriptionEndDate) 
             : new Date();
         currentDate.setDate(currentDate.getDate() + addDays);
         gym.subscriptionEndDate = currentDate;
+        gym.isActive = true;
     }
 
     const updatedGym = await gym.save();

@@ -1,9 +1,8 @@
 const jwt = require('jsonwebtoken');
-const asyncHandler = require('express-async-handler'); // I need to install this or just use try/catch blocks. I'll stick to manual try-catch for simplicity or install it. I'll use async/await wrapper manually to avoid extra dep for now, or just handle it. Or I can install express-async-handler. It's cleaner.
 const User = require('../models/User');
+const Gym = require('../models/Gym');
 
 const protect = async (req, res, next) => {
-    console.log(">>> PROTECT MIDDLEWARE HIT <<< URL:", req.originalUrl);
     let token;
 
     if (
@@ -15,9 +14,6 @@ const protect = async (req, res, next) => {
 
     if (token) {
         try {
-            
-            console.log('RECEIVED TOKEN:', token);
-            
             // Check if it's the real super admin token
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             
@@ -31,10 +27,45 @@ const protect = async (req, res, next) => {
             if (!req.user) {
                 return res.status(401).json({ message: 'User not found' });
             }
+
+            // Super Admin Bypass - Super Admin is never blocked
+            if (req.user.isSuperAdmin || (req.user.isAdmin && (req.user.role === 'superadmin' || decoded.id === 'SUPERADMIN'))) {
+                return next();
+            }
+
+            // Routes that are allowed even if subscription is expired (so gym owner can see subscription status or make platform payments)
+            const isExemptRoute = 
+                req.originalUrl.includes('/api/auth') || 
+                req.originalUrl.includes('/api/platform-payments') ||
+                req.originalUrl.includes('/api/platform-settings') ||
+                (req.originalUrl.includes('/api/gym') && (req.method === 'GET' || req.originalUrl.includes('/subscription')));
+
+            if (!isExemptRoute) {
+                let gym = null;
+
+                if (req.user.role === 'admin') {
+                    gym = await Gym.findOne({ owner: req.user._id });
+                } else if (req.user.gymId) {
+                    gym = await Gym.findById(req.user.gymId);
+                }
+
+                if (gym) {
+                    const isExpired = gym.subscriptionEndDate && new Date(gym.subscriptionEndDate) < new Date();
+                    const isManuallyInactive = gym.isActive === false;
+
+                    if (isExpired || isManuallyInactive) {
+                        return res.status(403).json({
+                            isLocked: true,
+                            message: 'Gym access is locked due to pending subscription payment. Please contact administrator to renew.'
+                        });
+                    }
+                }
+            }
+
             next();
         } catch (error) {
-            console.error(error);
-            res.status(401).json({ message: 'TEST_ERROR_123' });
+            console.error('Auth protect error:', error);
+            res.status(401).json({ message: 'Not authorized, token failed' });
         }
     }
 
@@ -52,3 +83,4 @@ const admin = (req, res, next) => {
 };
 
 module.exports = { protect, admin };
+
