@@ -1,0 +1,9 @@
+{
+  "watch": ["src", "server.js"],
+  "ignore": [
+    "wa_sessions/**",
+    "wa_sessions/*",
+    "node_modules/**",
+    "*.log"
+  ]
+}

@@ -39,12 +39,22 @@ app.use('/api/community', require('./src/routes/communityRoutes'));
 app.use('/api/ai', require('./src/routes/aiRoutes'));
 app.use('/api/app', require('./src/routes/appRoutes'));
 app.use('/api/upload', require('./src/routes/uploadRoutes'));
+app.use('/api/whatsapp', require('./src/routes/whatsappRoutes'));
 app.use('/api/platform-payments', require('./src/routes/platformPaymentRoutes'));
 app.use('/api/platform-settings', require('./src/routes/platformSettingsRoutes'));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.get('/', (req, res) => {
     res.send('API is running...');
+});
+
+// JSON Error Handler Middleware
+app.use((err, req, res, next) => {
+    const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+    res.status(statusCode).json({
+        message: err.message || 'Server Error',
+        stack: process.env.NODE_ENV === 'production' ? null : err.stack,
+    });
 });
 
 const PORT = process.env.PORT || 5000;
