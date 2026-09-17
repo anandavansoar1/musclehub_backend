@@ -208,7 +208,7 @@ const updateMember = asyncHandler(async (req, res) => {
 });
 
 // @desc    Renew a member's membership
-//          - Extends endDate from current endDate (or today if already expired)
+//          - Extends endDate from custom date or current endDate
 //          - Sets status to Active
 //          - Creates a Payment record
 //          - Updates member.price if a new price is provided
@@ -225,6 +225,8 @@ const renewMember = asyncHandler(async (req, res) => {
 
     const {
         durationMonths = 1,
+        startDate,
+        endDate,
         price,
         method = 'Cash',
         membershipType,
@@ -232,19 +234,25 @@ const renewMember = asyncHandler(async (req, res) => {
         note
     } = req.body;
 
-    const months = Number(durationMonths);
-    if (!months || months < 1) {
-        res.status(400);
-        throw new Error('Invalid duration');
+    let finalEndDate;
+    if (endDate) {
+        finalEndDate = new Date(endDate);
+    } else {
+        const months = Number(durationMonths) || 1;
+        const baseDate = startDate
+            ? new Date(startDate)
+            : (new Date(member.endDate) > new Date() ? new Date(member.endDate) : new Date());
+        baseDate.setMonth(baseDate.getMonth() + months);
+        finalEndDate = baseDate;
     }
 
-    // Extend from current endDate if still in future, else from today
-    const baseDate = new Date(member.endDate) > new Date() ? new Date(member.endDate) : new Date();
-    baseDate.setMonth(baseDate.getMonth() + months);
+    if (startDate) {
+        member.startDate = new Date(startDate);
+    }
 
     // Update member fields
-    member.endDate = baseDate;
-    member.status = 'Active';
+    member.endDate = finalEndDate;
+    member.status = finalEndDate >= new Date() ? 'Active' : 'Expired';
     if (membershipType) member.membershipType = membershipType;
     if (planDuration) member.planDuration = planDuration;
 
@@ -256,6 +264,7 @@ const renewMember = asyncHandler(async (req, res) => {
     await member.save();
 
     // Create payment record
+    const months = Number(durationMonths) || 1;
     const paymentDescription = note
         ? `Renewal - ${member.membershipType} (${note})`
         : `Renewal - ${member.membershipType} (${months} month${months > 1 ? 's' : ''})`;
@@ -277,7 +286,7 @@ const renewMember = asyncHandler(async (req, res) => {
     res.json({
         member,
         payment,
-        message: `Membership renewed successfully until ${baseDate.toLocaleDateString('en-IN')}`
+        message: `Membership renewed successfully until ${finalEndDate.toLocaleDateString('en-IN')}`
     });
 });
 
