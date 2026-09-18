@@ -9,9 +9,23 @@ const {
     logoutWhatsApp,
 } = require('../services/whatsappService');
 
+const User = require('../models/User');
+
 // Helper to get gymId for admin
 const getGymIdForAdmin = async (userId) => {
-    const gym = await Gym.findOne({ owner: userId });
+    let gym = await Gym.findOne({ owner: userId });
+    if (!gym) {
+        const user = await User.findById(userId);
+        if (user && user.gymId) {
+            gym = await Gym.findById(user.gymId);
+        }
+        if (!gym && user) {
+            gym = await Gym.create({
+                owner: userId,
+                name: user.name ? `${user.name}'s Gym` : 'MuscleHub Gym',
+            });
+        }
+    }
     return gym ? gym._id : null;
 };
 

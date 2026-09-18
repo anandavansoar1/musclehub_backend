@@ -159,23 +159,12 @@ const getOrInitSession = async (gymId, phoneNumberForPairing = null) => {
 /**
  * Get current WhatsApp status for a gym
  */
-const getWhatsAppStatus = async (gymId) => {
+const getWhatsAppStatus = async (gymId, autoInit = true) => {
     const gymIdStr = String(gymId);
     let session = sessions.get(gymIdStr);
 
-    if (!session) {
-        const sessionDir = getSessionDir(gymIdStr);
-        const credsPath = path.join(sessionDir, 'creds.json');
-        if (fs.existsSync(credsPath)) {
-            // Re-init session immediately
-            session = await getOrInitSession(gymIdStr).catch(() => null);
-        } else {
-            return {
-                connected: false,
-                state: 'disconnected',
-                phone: null,
-            };
-        }
+    if (!session && autoInit) {
+        session = await getOrInitSession(gymIdStr).catch(() => null);
     }
 
     if (!session) {
@@ -183,6 +172,9 @@ const getWhatsAppStatus = async (gymId) => {
             connected: false,
             state: 'disconnected',
             phone: null,
+            qr: null,
+            qrDataUrl: null,
+            hasQr: false,
         };
     }
 
@@ -194,7 +186,9 @@ const getWhatsAppStatus = async (gymId) => {
         state: session.state,
         phone,
         pairingCode: session.pairingCode || null,
-        hasQr: !!session.qrDataUrl,
+        qr: session.qr || null,
+        qrDataUrl: session.qrDataUrl || null,
+        hasQr: !!session.qrDataUrl || !!session.qr,
     };
 };
 
@@ -220,11 +214,11 @@ const getQRCode = async (gymId) => {
     const gymIdStr = String(gymId);
     const session = await getOrInitSession(gymIdStr);
 
-    // If QR is not ready yet and not registered, wait for it
+    // If QR is not ready yet and not registered, wait up to 10s for Baileys to emit QR
     if (!session.qrDataUrl && session.state !== 'open') {
-        for (let i = 0; i < 15; i++) {
+        for (let i = 0; i < 25; i++) {
             if (session.qrDataUrl || session.state === 'open') break;
-            await new Promise((r) => setTimeout(r, 300));
+            await new Promise((r) => setTimeout(r, 400));
         }
     }
 
