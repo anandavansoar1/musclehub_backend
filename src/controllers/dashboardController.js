@@ -117,9 +117,25 @@ const getDashboardStats = asyncHandler(async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(3);
 
+    // Calculate Gym Subscription info
+    let gymSubscription = null;
+    if (gym && gym.subscriptionEndDate) {
+        const now = new Date();
+        const endDate = new Date(gym.subscriptionEndDate);
+        const diffMs = endDate.getTime() - now.getTime();
+        const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        gymSubscription = {
+            endDate: gym.subscriptionEndDate,
+            daysLeft,
+            isExpiringSoon: daysLeft <= 2 && daysLeft >= 0,
+            isExpired: daysLeft < 0,
+        };
+    }
+
     res.json({
         name: req.user.name,
         gymName: gym ? gym.name : req.user.name,
+        gymSubscription,
         activeMembers,
         totalGyms,
         totalMembers,

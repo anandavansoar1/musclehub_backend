@@ -66,6 +66,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 const processAutoCheckouts = require('./src/utils/autoCheckout');
+const checkGymSubscriptions = require('./src/utils/gymSubscriptionScheduler');
 
 const { migratePayments } = require('./src/controllers/paymentController');
 
@@ -76,6 +77,10 @@ app.listen(PORT, () => {
     setInterval(processAutoCheckouts, 15 * 60 * 1000);
     // Run once on startup to catch any missed while server was down
     processAutoCheckouts();
+
+    // Run gym subscription reminder check every 6 hours & once on startup
+    setInterval(checkGymSubscriptions, 6 * 60 * 60 * 1000);
+    checkGymSubscriptions();
 
     // Run payment migration once on startup to fix missing transactions
     migratePayments();
