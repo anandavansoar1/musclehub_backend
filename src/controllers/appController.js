@@ -4,7 +4,7 @@
 const getAppVersion = async (req, res) => {
     try {
         res.json({
-            latestVersion: '1.0.1',
+            latestVersion: '1.0.6',
             minSupportedVersion: '1.0.0',
             forceUpdate: false,
             updateUrl: 'https://play.google.com/store/apps/details?id=com.musclehub', 
