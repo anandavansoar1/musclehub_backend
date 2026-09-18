@@ -1,14 +1,16 @@
-const {
-    default: makeWASocket,
-    useMultiFileAuthState,
-    DisconnectReason,
-    fetchLatestBaileysVersion,
-    makeCacheableSignalKeyStore,
-} = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const path = require('path');
 const fs = require('fs');
 const QRCode = require('qrcode');
+
+// Helper to load ESM module @whiskeysockets/baileys in CommonJS
+let baileysPkg = null;
+const getBaileys = async () => {
+    if (!baileysPkg) {
+        baileysPkg = await import('@whiskeysockets/baileys');
+    }
+    return baileysPkg;
+};
 
 // Map of active WhatsApp sessions: gymId -> { sock, state, qr, pairingCode, phone, saveCreds }
 const sessions = new Map();
@@ -57,6 +59,14 @@ const getOrInitSession = async (gymId, phoneNumberForPairing = null) => {
     if (session && session.sock && session.state === 'open') {
         return session;
     }
+
+    const {
+        default: makeWASocket,
+        useMultiFileAuthState,
+        DisconnectReason,
+        fetchLatestBaileysVersion,
+        makeCacheableSignalKeyStore,
+    } = await getBaileys();
 
     const sessionDir = getSessionDir(gymIdStr);
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
